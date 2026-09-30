@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simulado de teste</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f3f4f6; margin: 0; padding: 32px; color: #111827; }
+    main { max-width: 680px; margin: 0 auto; background: #fff; padding: 24px 28px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
+    h1 { font-size: 20px; margin: 0 0 8px; color: #0f172a; }
+    #counter { color: #64748b; margin: 0 0 18px; font-size: 13px; }
+    .tabs-header { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
+    .tab-btn { background: transparent; border: 0; padding: 8px 14px; font-weight: 600; font-size: 13px; color: #64748b; cursor: pointer; border-radius: 6px; }
+    .tab-btn.active { background: #e0f2fe; color: #0369a1; }
+    h2 { font-size: 18px; margin: 0 0 16px; color: #1e293b; line-height: 1.4; }
+    .options { display: grid; gap: 10px; }
+    .opt { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
+    .opt:hover { background: #f8fafc; border-color: #94a3b8; }
+    .nav { margin-top: 24px; display: flex; gap: 10px; align-items: center; }
+    button.btn { padding: 9px 18px; border: 0; border-radius: 6px; background: #1e40af; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+    button.btn.secondary { background: #64748b; }
+    button.btn:disabled { opacity: .4; cursor: default; }
+    
+    /* Estilos do Teste Psicotécnico / Símbolos */
+    .psycho-banner { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px 14px; border-radius: 6px; margin-bottom: 18px; font-size: 12.5px; color: #1e40af; }
+    .sequence-row { display: flex; align-items: center; gap: 12px; margin: 20px 0 24px; flex-wrap: wrap; }
+    .seq-box { width: 90px; height: 90px; border: 2px solid #cbd5e1; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fafafa; position: relative; }
+    .seq-box.target { border: 2px dashed #0284c7; background: #f0f9ff; }
+    .seq-box .index-badge { position: absolute; top: 4px; left: 6px; font-size: 10px; font-weight: 700; color: #94a3b8; }
+    .seq-arrow { font-size: 20px; color: #94a3b8; font-weight: bold; }
+    .psycho-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+    .psycho-opt-card { border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s; background: #fff; }
+    .psycho-opt-card:hover { border-color: #0284c7; background: #f0f9ff; transform: translateY(-2px); }
+    .psycho-opt-key { font-weight: 700; font-size: 14px; margin-bottom: 6px; color: #0f172a; }
+  </style>
+</head>
+<body>
+  <main id="exam">
+    <div class="tabs-header">
+      <button type="button" class="tab-btn active" id="tab-medical">Simulado Texto (Medicina)</button>
+      <button type="button" class="tab-btn" id="tab-psycho">🧩 Prova Psicotécnica (Símbolos / Visão IA)</button>
+    </div>
+
+    <header>
+      <h1 id="title">Simulado de Medicina</h1>
+      <p id="counter"></p>
+    </header>
+
+    <section id="card"></section>
+
+    <div class="nav" id="nav-bar">
+      <button id="prev" class="btn secondary" type="button">Anterior</button>
+      <button id="next" class="btn" type="button">Próxima</button>
+    </div>
+  </main>
+
+  <script>
+    const QUESTIONS_MEDICAL = [
+      { q: 'Qual hormônio reduz a glicemia?', o: ['Glucagon', 'Insulina', 'Cortisol', 'Adrenalina'] },
+      { q: 'Qual é o agente etiológico da forma mais grave de malária?', o: ['Plasmodium vivax', 'Plasmodium malariae', 'Plasmodium ovale', 'Plasmodium falciparum'] },
+      { q: 'Qual osso é mais fraturado em queda com a mão espalmada (fratura de Colles)?', o: ['Rádio', 'Úmero', 'Escafoide', 'Clavícula'] },
+      { q: 'Qual é o exame de escolha para nefrolitíase em urgência?', o: ['Radiografia simples', 'Ultrassonografia', 'Urografia excretora', 'TC sem contraste'] },
+      { q: 'A deficiência de qual vitamina causa escorbuto?', o: ['Vitamina A', 'Vitamina D', 'Vitamina C', 'Vitamina K'] },
+      { q: 'Qual é a principal via de transmissão da cólera?', o: ['Respiratória', 'Fecal-oral', 'Vetorial', 'Sexual'] },
+      { q: 'Qual nervo é mais lesionado na fratura do colo cirúrgico do úmero?', o: ['Radial', 'Mediano', 'Ulnar', 'Axilar'] },
+      { q: 'Qual órgão produz a bile?', o: ['Vesícula biliar', 'Pâncreas', 'Fígado', 'Baço'] },
+      { q: 'Qual medida específica previne diarreia grave por rotavírus em crianças?', o: ['Antibióticos profiláticos', 'Restrição hídrica', 'Antieméticos', 'Vacinação'] },
+      { q: 'Qual é a frequência cardíaca normal em repouso de um adulto?', o: ['40–60 bpm', '60–100 bpm', '100–140 bpm', '140–180 bpm'] },
+    ];
+
+    const card = document.getElementById('card');
+    const counter = document.getElementById('counter');
+    const title = document.getElementById('title');
+    const next = document.getElementById('next');
+    const prev = document.getElementById('prev');
+    const tabMedical = document.getElementById('tab-medical');
+    const tabPsycho = document.getElementById('tab-psycho');
+    const navBar = document.getElementById('nav-bar');
+
+    let currentMode = 'medical';
+    let i = 0;
+
+    function renderMedical() {
+      navBar.style.display = 'flex';
+      title.textContent = 'Simulado de Medicina — página de teste';
+      prev.disabled = i === 0;
+      if (i >= QUESTIONS_MEDICAL.length) {
+        counter.textContent = 'Prova finalizada';
+        card.innerHTML = '<h2>Fim do simulado</h2>';
+        next.disabled = true;
+        return;
+      }
+      const { q, o } = QUESTIONS_MEDICAL[i];
+      counter.textContent = `Pergunta ${i + 1} de ${QUESTIONS_MEDICAL.length}`;
+      next.textContent = i === QUESTIONS_MEDICAL.length - 1 ? 'Finalizar' : 'Próxima';
+      next.disabled = false;
+      card.innerHTML =
+        `<h2>${q}</h2><div class="options" role="radiogroup">` +
+        o.map((t, k) => {
+          const L = 'ABCD'[k];
+          return `<label class="opt"><input type="radio" name="answer" value="${L}"><span>${L}) ${t}</span></label>`;
+        }).join('') + '</div>';
+    }
+
+    function renderPsycho() {
+      navBar.style.display = 'none';
+      title.textContent = 'Prova Psicotécnica — Raciocínio Lógico com Símbolos';
+      counter.textContent = 'Teste de Visão Multimodal com Figuras Geométricas';
+
+      card.innerHTML = `
+        <div class="psycho-banner">
+          📸 <strong>Dica de Teste com a Extensão:</strong> Pressione <strong>Alt + S</strong> ou clique no botão flutuante <strong>📷 Visão (Alt+S)</strong> no canto inferior e arraste o retângulo sobre a questão abaixo para a IA analisar o padrão visual!
+        </div>
+
+        <h2>Questão: Observe a rotação horária de 90° e o padrão de preenchimento dos círculos abaixo. Qual figura deve substituir a interrogação (?)?</h2>
+
+        <div class="sequence-row">
+          <div class="seq-box">
+            <span class="index-badge">1</span>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5">
+              <line x1="12" y1="19" x2="12" y2="5"></line>
+              <polyline points="5 12 12 5 19 12"></polyline>
+            </svg>
+            <span style="font-size: 10px; color: #64748b; margin-top: 2px;">Cima</span>
+          </div>
+
+          <span class="seq-arrow">➔</span>
+
+          <div class="seq-box">
+            <span class="index-badge">2</span>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+            <span style="font-size: 10px; color: #64748b; margin-top: 2px;">Direita</span>
+          </div>
+
+          <span class="seq-arrow">➔</span>
+
+          <div class="seq-box">
+            <span class="index-badge">3</span>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <polyline points="19 12 12 19 5 12"></polyline>
+            </svg>
+            <span style="font-size: 10px; color: #64748b; margin-top: 2px;">Baixo</span>
+          </div>
+
+          <span class="seq-arrow">➔</span>
+
+          <div class="seq-box target">
+            <span class="index-badge">4</span>
+            <span style="font-size: 32px; font-weight: 800; color: #0284c7;">?</span>
+          </div>
+        </div>
+
+        <p style="font-weight: 600; font-size: 14px; margin-bottom: 12px; color: #334155;">Alternativas de Resposta:</p>
+
+        <div class="psycho-options" role="radiogroup">
+          <label class="psycho-opt-card">
+            <input type="radio" name="psycho_ans" value="A" style="margin-bottom: 6px;">
+            <span class="psycho-opt-key">A)</span>
+            <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2.5">
+              <line x1="12" y1="19" x2="12" y2="5"></line>
+              <polyline points="5 12 12 5 19 12"></polyline>
+            </svg>
+            <span style="font-size: 11px; color: #64748b; margin-top: 4px;">Seta Cima</span>
+          </label>
+
+          <label class="psycho-opt-card">
+            <input type="radio" name="psycho_ans" value="B" style="margin-bottom: 6px;">
+            <span class="psycho-opt-key">B)</span>
+            <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2.5">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            <span style="font-size: 11px; color: #64748b; margin-top: 4px;">Seta Esquerda</span>
+          </label>
+
+          <label class="psycho-opt-card">
+            <input type="radio" name="psycho_ans" value="C" style="margin-bottom: 6px;">
+            <span class="psycho-opt-key">C)</span>
+            <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2.5">
+              <circle cx="12" cy="12" r="8"></circle>
+            </svg>
+            <span style="font-size: 11px; color: #64748b; margin-top: 4px;">Círculo</span>
+          </label>
+
+          <label class="psycho-opt-card">
+            <input type="radio" name="psycho_ans" value="D" style="margin-bottom: 6px;">
+            <span class="psycho-opt-key">D)</span>
+            <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2.5">
+              <rect x="5" y="5" width="14" height="14" rx="2"></rect>
+            </svg>
+            <span style="font-size: 11px; color: #64748b; margin-top: 4px;">Quadrado</span>
+          </label>
+        </div>
+      `;
+    }
+
+    tabMedical.addEventListener('click', () => {
+      currentMode = 'medical';
+      tabMedical.classList.add('active');
+      tabPsycho.classList.remove('active');
+      renderMedical();
+    });
+
+    tabPsycho.addEventListener('click', () => {
+      currentMode = 'psycho';
+      tabPsycho.classList.add('active');
+      tabMedical.classList.remove('active');
+      renderPsycho();
+    });
+
+    next.addEventListener('click', () => { i++; renderMedical(); });
+    prev.addEventListener('click', () => { i--; renderMedical(); });
+
+    renderMedical();
+  </script>
+</body>
+</html>

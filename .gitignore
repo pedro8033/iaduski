@@ -1,0 +1,43 @@
+# Dependências
+node_modules/
+.pnp
+.pnp.js
+
+# Produção / Builds
+dist/
+build/
+*.zip
+*.apk
+*.aab
+
+# Variáveis de ambiente e segredos (NUNCA enviar para o GitHub)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+server/.env
+extension/.env
+
+# Android
+.gradle/
+android-app/.gradle/
+android-app/build/
+android-app/app/build/
+android-app/local.properties
+android-app/.idea/
+*.iml
+
+# Logs e temporários de teste
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+gemini_raw_out.json
+test_gemini.mjs
+
+# Sistema
+.DS_Store
+Thumbs.db
+.system_generated/

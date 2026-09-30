@@ -1,0 +1,24 @@
+{
+  "name": "ai-question-extension",
+  "private": true,
+  "version": "0.1.0",
+  "description": "MVP: extensão Chrome (MV3) que detecta questões de múltipla escolha e mostra a alternativa escolhida por um motor de IA",
+  "workspaces": ["extension", "server"],
+  "scripts": {
+    "dev": "concurrently -n server,extension -c blue,green \"npm run server\" \"npm run dev -w extension\"",
+    "start": "npm run start -w server",
+    "server": "npm run dev -w server",
+    "start:server": "npm run start -w server",
+    "build:extension": "npm run build -w extension",
+    "package:extension": "npm run build:extension && powershell -Command \"Compress-Archive -Path extension\\dist\\* -DestinationPath ai-question-assistant.zip -Force\"",
+    "typecheck": "npm run typecheck -w extension && npm run typecheck -w server",
+    "test": "npm run test -w extension && npm run test -w server",
+    "test:e2e": "tsx scripts/e2e.mts"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "jsdom": "^25.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
