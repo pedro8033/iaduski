@@ -1,71 +1,82 @@
-# AI Question Assistant — MVP
+# AI Question Assistant & Assistente de IA Global
 
-Extensão Chrome/Chromium (Manifest V3) que **detecta automaticamente** uma questão de múltipla escolha na página,
-envia pergunta + alternativas a um backend TypeScript/Express e **mostra a alternativa escolhida** por um motor de IA, com a latência.
+Plataforma completa de Inteligência Artificial com **assistente flutuante global para Android**, **backend com múltiplos motores de IA** e **extensão Chrome/Chromium** integrada.
 
-> Use apenas em contextos em que a assistência automatizada é permitida (estudo, simulados, treino, testes próprios).
+---
 
-```
-Página ─▶ content script (detector + MutationObserver) ─▶ service worker ─▶ POST /api/answer ─▶ provider de IA
-                                                                   ◀───────────── { answer, latencyMs } ◀─────────
-```
+## 🌟 Funcionalidades do Assistente Global (Android)
 
-## Requisitos
-Node.js ≥ 20 e Google Chrome/Chromium.
+O assistente flutuante opera sobre qualquer aplicação do sistema operativo (leitores de PDF, navegadores Chrome/Firefox, redes sociais, aplicações de mensagens e plataformas educativas), respeitando a privacidade e permissões do utilizador.
 
-## Instalação e execução
+### 1. Botão Flutuante e Janela Contextual
+- **Design Moderno:** Botão magnético com gradiente ciano-índigo, arrastável e com snap automático às margens do ecrã.
+- **Memória de Posição:** A posição do botão e as preferências do utilizador são preservadas entre reinicializações.
+- **Painel Flutuante Inteligente:** Ao tocar no botão, abre um painel compacto com pré-visualização de contexto, campo de instruções/perguntas, atalhos rápidos e visualizador de resultados.
+- **Controlo de Dimensão:** O utilizador pode minimizar, expandir (modo compacto vs expandido) ou fechar o assistente.
+
+### 2. Compreensão do Conteúdo Apresentado no Ecrã
+- **Captura e Recorte de Ecrã:** Captura com consentimento explícito via Android `MediaProjection` e recorte retangular de área de interesse (`ScreenCaptureActivity`).
+- **Menu de Partilha do Sistema:** Integração direta com `Intent.ACTION_SEND`: partilhe texto, páginas web ou imagens de qualquer aplicação diretamente para o Assistente IA.
+- **Seleção de Texto Global do Android:** Integração com `Intent.ACTION_PROCESS_TEXT`: ao selecionar qualquer texto em qualquer aplicação, surge a opção **"Assistente IA"** no menu flutuante nativo.
+- **Leitura em Voz Alta (TTS):** Motor `TextToSpeech` nativo para ouvir resumos e explicações em voz alta.
+- **Reconhecimento de Voz (STT):** Ditado de instruções e perguntas por voz (`SpeechRecognizer`).
+- **Histórico & Privacidade:** Histórico local em SharedPreferences/JSON, permitindo pesquisar, consultar, exportar e eliminar permanentemente os dados.
+
+### 3. Ações Inteligentes de IA
+- 📝 **Resumir:** Resumos executivos, detalhados ou estruturados por tópicos; síntese de ideias principais e fichas de revisão.
+- 💡 **Explicar:** Explicação didática passo a passo, desmistificação de conceitos técnicos e analogias práticas.
+- 📊 **Criar Diagramas:** Geração de diagramas conceituais em formato **Mermaid.js** (fluxogramas, mapas mentais, hierarquias) com explicação dos nós e fluxos.
+- 🎨 **Gerar Imagens com IA:** Criação real de imagens conceituais, educativas e infográficos via integração com Pollinations AI / Google Gemini.
+- 🌐 **Traduzir:** Tradução contextual para Português, Inglês ou Espanhol com notas linguísticas.
+- 🗂️ **Flashcards:** Fichas de estudo ativo com perguntas, respostas diretas e conceitos-chave.
+- ⚡ **Resolver Provas:** Identificação precisa de alternativas e resolução passo a passo de questões de múltipla escolha e testes psicotécnicos.
+
+---
+
+## ⚙️ Backend TypeScript/Express (`server/`)
+
+O backend foi expandido com serviços dedicados para o assistente:
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `POST` | `/api/assistant/action` | Executa ações inteligentes (`summarize`, `explain`, `diagram`, `translate`, `flashcards`, `ask`) |
+| `POST` | `/api/assistant/image` | Geração de ilustrações e imagens conceituais de IA |
+| `POST` | `/api/solve` | Resolução contextual de imagens ou enunciados de provas |
+| `POST` | `/api/answer` | Resolução estrita com validação de alternativas para a extensão Chrome |
+| `GET` | `/health` | Verificação do estado do servidor e motor ativo |
+| `GET/POST` | `/api/provider` | Consulta ou alternância dinâmica do motor de IA (`gemini` ou `typesafe`) |
+
+### Execução e Testes do Backend
 ```bash
 npm install
-cp server/.env.example server/.env     # opcional: sem AI_API_KEY o backend usa o MockProvider
-npm run dev                            # backend (http://127.0.0.1:3001) + build da extensão em modo watch
-```
-Comandos úteis:
-
-| Comando | O que faz |
-|---|---|
-| `npm run dev` | backend (`tsx watch`) + `vite build` da extensão em watch |
-| `npm run server` | só o backend |
-| `npm run build:extension` | build único em `extension/dist` |
-| `npm test` | testes unitários (extensão + backend) |
-| `npm run test:e2e` | fluxo completo sem navegador: test-page → detector → backend real → 10 questões |
-| `npm run typecheck` | `tsc --noEmit` nos dois pacotes |
-
-## Carregar a extensão no Chrome
-1. `npm run build:extension` (ou deixe `npm run dev` a correr).
-2. Abra `chrome://extensions` → ative **Developer mode**.
-3. **Load unpacked** → escolha a pasta `extension/dist`.
-4. Com o backend a correr, abra **http://localhost:3001/test-page/**. Aparece um selo no canto inferior direito
-   ("Analisando…" → "Resposta: B · 279 ms"); o popup da extensão mostra o mesmo estado.
-5. Clique em **Próxima**: a nova questão é detetada sem recarregar. Após mudar código, use o botão de recarregar em `chrome://extensions`.
-
-## Configuração do motor de IA (`server/.env`)
-```env
-AI_PROVIDER=openai            # ou "mock"
-AI_API_URL=https://api.openai.com/v1/chat/completions
-AI_MODEL=gpt-4o-mini
-AI_API_KEY=                   # <<< chave real aqui (só no backend)
-PORT=3001
-```
-- O provider incluído fala o formato `/chat/completions` (OpenAI e compatíveis). Para outro serviço, implemente `DecisionProvider` em `server/src/services/ai.ts`.
-- Sem `AI_API_KEY`, o backend usa o **MockProvider** (conhece as 10 questões da test-page; atraso simulado `MOCK_DELAY_MS`).
-- O backend valida entrada (zod) e **rejeita respostas fora das alternativas** (HTTP 502 `INVALID_AI_ANSWER`).
-
-## Usar noutro site
-Em `extension/manifest.json`, adicione o domínio em `content_scripts[0].matches` (por omissão só `localhost`/`127.0.0.1`), refaça o build e recarregue a extensão.
-Se o backend não estiver em `localhost:3001`, defina `VITE_API_URL` no build e ajuste `host_permissions`.
-
-## Estrutura
-```
-extension/  src/content (detector, observer, content.ts) · src/background (api.ts, serviceWorker.ts) · src/popup (React)
-server/     src/app.ts · routes/answer.ts · services/ai.ts (providers) · services/latency.ts
-test-page/  index.html (10 questões, DOM dinâmico)
-scripts/    e2e.mts
+npm test            # Executa a suite de testes unitários (servidor + extensão)
+npm run server      # Inicia o backend em http://localhost:3001
 ```
 
-## Limitações conhecidas
-- Detecção por `input[type=radio]` / `[role=radio]`; alternativas em `<div>` clicáveis sem role/radio não são detetadas.
-- O enunciado é o último bloco de texto antes da 1.ª alternativa: enunciados com vários parágrafos (casos clínicos) ou imagens são truncados/ignorados.
-- Shadow DOM e iframes de terceiros não são atravessados; um seletor específico por plataforma será necessário.
-- A extensão só **mostra** a alternativa; não seleciona nada na página.
-- Cache e deduplicação vivem na memória do service worker (perdem-se quando o Chrome o suspende).
-- O provider real (OpenAI-compatível) não foi exercitado sem chave; apenas o mock e os testes com stubs.
+---
+
+## 📱 Aplicação Android (`android-app/`)
+
+### Compilação do APK
+```bash
+cd android-app
+.\gradlew assembleDebug
+```
+O APK gerado fica disponível em: `android-app/app/build/outputs/apk/debug/app-debug.apk`.
+
+### Permissões Necessárias
+- `SYSTEM_ALERT_WINDOW`: Para apresentar a bolha e o painel sobre outras aplicações.
+- `FOREGROUND_SERVICE` & `FOREGROUND_SERVICE_MEDIA_PROJECTION`: Para manter o assistente ativo em segundo plano e permitir a captura de ecrã sob demanda do utilizador.
+- `POST_NOTIFICATIONS`: Notificação persistente obrigatória para Foreground Services no Android 13+.
+- `RECORD_AUDIO`: Para ditado de instruções por voz.
+
+---
+
+## 🧩 Extensão Chrome (`extension/`)
+
+A extensão Chrome (Manifest V3) preserva a funcionalidade de deteção e resolução automatizada de questões em páginas web de simulados.
+
+```bash
+npm run build:extension
+```
+Carregue a pasta `extension/dist` em `chrome://extensions` (modo de programador ativo).

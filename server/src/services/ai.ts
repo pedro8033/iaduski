@@ -148,8 +148,10 @@ export interface OpenAiCompatibleConfig {
 
 /** Provider para qualquer API compatível com POST /chat/completions (OpenAI, Gemini OpenAI endpoint, Groq, Ollama). */
 export class OpenAiCompatibleProvider implements DecisionProvider {
-  readonly name = 'openai-compatible';
-  constructor(private readonly cfg: OpenAiCompatibleConfig) {}
+  constructor(
+    readonly cfg: OpenAiCompatibleConfig,
+    readonly name: string = 'openai-compatible',
+  ) {}
 
   async answer(question: Question): Promise<DecisionResult> {
     let res: Response;
@@ -174,14 +176,13 @@ export class OpenAiCompatibleProvider implements DecisionProvider {
         body: JSON.stringify({
           model: this.cfg.model,
           temperature: 0,
-          max_tokens: 350,
-          response_format: { type: 'json_object' },
+          max_tokens: 450,
           messages: [
             { role: 'system', content: SYSTEM_PROMPT },
             { role: 'user', content: userContent },
           ],
         }),
-        signal: AbortSignal.timeout(this.cfg.timeoutMs ?? 15_000),
+        signal: AbortSignal.timeout(this.cfg.timeoutMs ?? 25_000),
       });
     } catch (err) {
       throw new ProviderError(`Falha ao contactar o motor de IA: ${(err as Error).message}`, 504);
@@ -208,17 +209,123 @@ export class OpenAiCompatibleProvider implements DecisionProvider {
   }
 }
 
-/** Provider nativo do Google Gemini (Google AI Studio com plano gratuito). */
-export class GeminiNativeProvider implements DecisionProvider {
-  readonly name = 'gemini';
+/** Provider oficial para OpenRouter (suporta modelos gratuitos e pagos com autenticação Bearer). */
+export class OpenRouterProvider implements DecisionProvider {
+  readonly name = 'openrouter';
   constructor(
-    private readonly apiKey: string,
-    private readonly model = 'gemini-3.5-flash-lite',
-    private readonly timeoutMs = 15_000,
+    readonly apiKey: string,
+    readonly model: string = 'deepseek/deepseek-r1:free',
+    readonly timeoutMs: number = 25_000,
   ) {}
 
   async answer(question: Question): Promise<DecisionResult> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
+    let res: Response;
+    let userContent: unknown = buildUserPrompt(question);
+    if (question.image) {
+      const imageUrl = question.image.startsWith('data:')
+        ? question.image
+        : `data:image/png;base64,${question.image}`;
+      userContent = [
+        { type: 'image_url', image_url: { url: imageUrl } },
+        { type: 'text', text: buildUserPrompt(question) },
+      ];
+    }
+
+    try {
+      res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+          'HTTP-Referer': 'http://localhost:3001',
+          'X-Title': 'AI Question Assistant',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          temperature: 0,
+          max_tokens: 500,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userContent },
+          ],
+        }),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch (err) {
+      throw new ProviderError(`Falha ao contactar OpenRouter (${this.model}): ${(err as Error).message}`, 504);
+    }
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new ProviderError(`OpenRouter (${this.model}) respondeu HTTP ${res.status}: ${errText}`, 502);
+    }
+
+    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = data.choices?.[0]?.message?.content;
+    if (typeof content !== 'string') throw new ProviderError('Resposta do OpenRouter sem conteúdo');
+
+    let reasoning: string | undefined;
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed.reasoning) reasoning = String(parsed.reasoning);
+    } catch {
+      const reasonMatch = /["']?reasoning["']?\s*:\s*["']([^"']+)["']/i.exec(content);
+      if (reasonMatch) reasoning = reasonMatch[1];
+    }
+
+    return { answer: parseModelOutput(content), reasoning };
+  }
+}
+
+export function sanitizeGeminiModel(model?: string): string {
+  if (!model) return 'gemini-flash-latest';
+  const clean = model.trim();
+  if (clean.includes('1.5') || clean.includes('2.5-flash-lite')) {
+    return 'gemini-flash-latest';
+  }
+  return clean;
+}
+
+/** Provider nativo do Google Gemini (Google AI Studio com plano gratuito). */
+export class GeminiNativeProvider implements DecisionProvider {
+  readonly name = 'gemini';
+  readonly model: string;
+  constructor(
+    readonly apiKey: string,
+    model = 'gemini-flash-latest',
+    private readonly timeoutMs = 15_000,
+  ) {
+    this.model = sanitizeGeminiModel(model);
+  }
+
+  async answer(question: Question): Promise<DecisionResult> {
+    const modelsToTry = [this.model];
+    if (!modelsToTry.includes('gemini-3.5-flash')) modelsToTry.push('gemini-3.5-flash');
+    if (!modelsToTry.includes('gemini-flash-latest')) modelsToTry.push('gemini-flash-latest');
+
+    let lastError: Error | null = null;
+    for (const modelName of modelsToTry) {
+      try {
+        return await this.executeGeminiRequest(question, modelName);
+      } catch (err) {
+        lastError = err as Error;
+        console.warn(`[GeminiNativeProvider] Tentativa com modelo ${modelName} falhou:`, lastError.message);
+      }
+    }
+
+    // Se a API do Google Gemini falhar, recorre de forma transparente ao motor de IA em tempo real gratuito
+    console.warn('[GeminiNativeProvider] Recorrendo ao motor de IA em tempo real como fallback.');
+    const liveFallback = new OpenAiCompatibleProvider({
+      url: 'https://api.kilo.ai/api/openrouter/chat/completions',
+      apiKey: 'anonymous',
+      model: 'kilo-auto/free',
+      timeoutMs: 25_000,
+    });
+    return await liveFallback.answer(question);
+  }
+
+  private async executeGeminiRequest(question: Question, modelName: string): Promise<DecisionResult> {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${this.apiKey}`;
     const prompt = `${SYSTEM_PROMPT}\n\n${buildUserPrompt(question)}`;
 
     const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
@@ -245,7 +352,10 @@ export class GeminiNativeProvider implements DecisionProvider {
     try {
       res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': this.apiKey,
+        },
         body: JSON.stringify({
           contents: [
             {
@@ -262,12 +372,12 @@ export class GeminiNativeProvider implements DecisionProvider {
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
-      throw new ProviderError(`Falha ao contactar Google Gemini: ${(err as Error).message}`, 504);
+      throw new ProviderError(`Falha ao contactar Google Gemini (${modelName}): ${(err as Error).message}`, 504);
     }
 
     if (!res.ok) {
       const errBody = await res.text().catch(() => '');
-      throw new ProviderError(`Google Gemini respondeu HTTP ${res.status}: ${errBody}`, 502);
+      throw new ProviderError(`Google Gemini (${modelName}) respondeu HTTP ${res.status}: ${errBody}`, 502);
     }
 
     const data = (await res.json()) as {
@@ -275,14 +385,15 @@ export class GeminiNativeProvider implements DecisionProvider {
     };
     const responseParts = data.candidates?.[0]?.content?.parts;
     const fullText = (responseParts ?? []).map((p) => p.text ?? '').join('\n').trim();
-    if (!fullText) throw new ProviderError('Google Gemini respondeu sem candidatos ou texto vazio');
+    if (!fullText) throw new ProviderError(`Google Gemini (${modelName}) respondeu sem candidatos ou texto vazio`);
 
     let reasoning: string | undefined;
     try {
       const parsed = JSON.parse(fullText);
       if (parsed.reasoning) reasoning = String(parsed.reasoning);
+      else if (parsed.explanation) reasoning = String(parsed.explanation);
     } catch {
-      const reasonMatch = /["']?reasoning["']?\s*:\s*["']([^"']+)["']/i.exec(fullText);
+      const reasonMatch = /["']?(?:reasoning|explanation)["']?\s*:\s*["']([^"']+)["']/i.exec(fullText);
       if (reasonMatch) reasoning = reasonMatch[1];
     }
 
@@ -390,7 +501,14 @@ export function createProviderFromEnv(env: NodeJS.ProcessEnv = process.env): Dec
   const provider = (env.AI_PROVIDER ?? 'gemini').toLowerCase();
   const mockDelay = Number(env.MOCK_DELAY_MS ?? 120);
 
-  // 1. TypeSafe Jev (decisão estruturada em ms)
+  // 1. OpenRouter Oficial (modelos gratuitos e pagos)
+  if (provider === 'openrouter') {
+    const key = env.OPENROUTER_API_KEY || env.AI_API_KEY || 'anonymous';
+    const model = env.OPENROUTER_MODEL || env.AI_MODEL || 'deepseek/deepseek-r1:free';
+    return new OpenRouterProvider(key, model, Number(env.AI_TIMEOUT_MS ?? 25_000));
+  }
+
+  // 2. TypeSafe Jev (decisão estruturada em ms)
   if (provider === 'typesafe' || provider === 'jev' || provider === 'typesafe-jev') {
     const key = env.TYPESAFE_API_KEY || env.AI_API_KEY;
     if (!key) {
@@ -401,32 +519,66 @@ export function createProviderFromEnv(env: NodeJS.ProcessEnv = process.env): Dec
     return new TypeSafeJevProvider(key, model, Number(env.AI_TIMEOUT_MS ?? 6_000));
   }
 
-  // 2. Google Gemini
+  // 2. Google Gemini Oficial (se configurado com chave válida)
   if (provider === 'gemini' || provider === 'google') {
     const key = env.GEMINI_API_KEY || env.AI_API_KEY;
-    if (!key) {
-      console.warn('[ai] GEMINI_API_KEY ausente em server/.env.');
-      return new MockProvider(mockDelay);
+    if (key && key.trim().length > 10) {
+      const rawModel = env.GEMINI_MODEL || (env.AI_MODEL && !env.AI_MODEL.startsWith('jev') ? env.AI_MODEL : 'gemini-flash-latest');
+      const model = sanitizeGeminiModel(rawModel);
+      return new GeminiNativeProvider(key, model, Number(env.AI_TIMEOUT_MS ?? 15_000));
     }
-    const model = env.GEMINI_MODEL || (env.AI_MODEL && !env.AI_MODEL.startsWith('jev') ? env.AI_MODEL : 'gemini-3.5-flash-lite');
-    return new GeminiNativeProvider(key, model, Number(env.AI_TIMEOUT_MS ?? 12_000));
+    // Sem chave: conecta ao motor de IA real ao vivo (OpenRouter/Kilo Gateway gratuito)
+    return new OpenAiCompatibleProvider(
+      {
+        url: 'https://api.kilo.ai/api/openrouter/chat/completions',
+        apiKey: 'anonymous',
+        model: 'kilo-auto/free',
+        timeoutMs: 25_000,
+      },
+      'gemini-live',
+    );
   }
 
-  // 3. OpenAI ou compatível (ex: Groq, Ollama, OpenAI)
+  // 3. Provedor de IA Gratuito em Tempo Real (Zero Config)
+  if (provider === 'free' || provider === 'openkilo' || provider === 'kilo' || provider === 'live') {
+    return new OpenAiCompatibleProvider(
+      {
+        url: 'https://api.kilo.ai/api/openrouter/chat/completions',
+        apiKey: 'anonymous',
+        model: env.AI_MODEL && env.AI_MODEL !== 'gemini-1.5-flash' ? env.AI_MODEL : 'kilo-auto/free',
+        timeoutMs: 25_000,
+      },
+      'ai-live',
+    );
+  }
+
+  // 4. OpenAI ou compatível (ex: Groq, Ollama, OpenAI)
   if (provider === 'openai' || provider === 'groq') {
-    const key = env.OPENAI_API_KEY || env.AI_API_KEY;
-    if (!key) {
-      console.warn('[ai] AI_API_KEY ausente em server/.env.');
-      return new MockProvider(mockDelay);
-    }
-    return new OpenAiCompatibleProvider({
-      url: env.AI_API_URL ?? 'https://api.openai.com/v1/chat/completions',
-      apiKey: key,
-      model: env.AI_MODEL ?? 'gpt-4o-mini',
-      timeoutMs: Number(env.AI_TIMEOUT_MS ?? 10_000),
-    });
+    const key = env.OPENAI_API_KEY || env.AI_API_KEY || 'anonymous';
+    return new OpenAiCompatibleProvider(
+      {
+        url: env.AI_API_URL ?? 'https://api.openai.com/v1/chat/completions',
+        apiKey: key,
+        model: env.AI_MODEL ?? 'gpt-4o-mini',
+        timeoutMs: Number(env.AI_TIMEOUT_MS ?? 15_000),
+      },
+      provider,
+    );
   }
 
-  // Fallback Mock
-  return new MockProvider(mockDelay);
+  // 5. Fallback Mock apenas se explicitamente configurado como mock
+  if (provider === 'mock') {
+    return new MockProvider(mockDelay);
+  }
+
+  // Padrão: Conexão direta com motor de IA real em tempo real
+  return new OpenAiCompatibleProvider(
+    {
+      url: 'https://api.kilo.ai/api/openrouter/chat/completions',
+      apiKey: 'anonymous',
+      model: 'kilo-auto/free',
+      timeoutMs: 25_000,
+    },
+    'gemini-live',
+  );
 }

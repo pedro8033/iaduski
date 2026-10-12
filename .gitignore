@@ -36,6 +36,8 @@ yarn-error.log*
 *.log
 gemini_raw_out.json
 test_gemini.mjs
+server/scratch_*.js
+server/data/*.json
 
 # Sistema
 .DS_Store

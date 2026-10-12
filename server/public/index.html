@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatGPT</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <!-- Markdown & Mermaid -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body class="chatgpt-body">
+  <div class="chatgpt-layout">
+    <!-- BARRA LATERAL (SIDEBAR) -->
+    <aside class="chatgpt-sidebar" id="sidebar">
+      <!-- Topo da Sidebar -->
+      <div class="sidebar-header">
+        <div class="sidebar-brand-dropdown" id="btn-model-dropdown" title="Selecionar modelo de IA">
+          <span class="brand-text">ChatGPT</span>
+          <svg class="icon-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="sidebar-header-actions">
+          <button class="sidebar-icon-btn" id="btn-notifications" title="Notificações">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </button>
+          <button class="sidebar-icon-btn" id="btn-search-chats" title="Pesquisar conversas">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
+          <button class="sidebar-icon-btn" id="btn-toggle-sidebar" title="Recolher barra lateral">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Botão Novo Chat -->
+      <div class="sidebar-new-chat-wrapper">
+        <button class="btn-new-chat" id="btn-new-chat">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>Novo chat</span>
+        </button>
+      </div>
+
+      <!-- Seções da Sidebar -->
+      <div class="sidebar-scrollable">
+        <!-- Seção Notas -->
+        <div class="sidebar-section">
+          <div class="sidebar-item" id="sidebar-notes-btn" style="cursor: pointer;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span class="item-label" style="font-weight: 500;">Notas</span>
+          </div>
+        </div>
+
+        <!-- Seção Projetos -->
+        <div class="sidebar-section">
+          <div class="section-title">Projetos</div>
+          <div class="sidebar-item project-item">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span class="item-label">MoneyPrinterTurbo-main</span>
+          </div>
+        </div>
+
+        <!-- Seção Recentes -->
+        <div class="sidebar-section">
+          <div class="section-title">Recentes</div>
+          <div class="recent-chats-list" id="recent-chats-list">
+            <!-- Gerado via JS a partir do histórico -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Rodapé do Perfil -->
+      <div class="sidebar-footer">
+        <div class="user-profile-btn" id="btn-user-profile">
+          <div class="user-avatar">CD</div>
+          <div class="user-info">
+            <div class="user-name">Cláudio</div>
+            <div class="user-plan" id="current-engine-label">Gemini Pro / Flash</div>
+          </div>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ÁREA PRINCIPAL DO CHAT -->
+    <main class="chatgpt-main">
+      <!-- Barra Superior -->
+      <header class="main-topbar">
+        <div class="topbar-left">
+          <button class="mobile-sidebar-toggle" id="btn-mobile-sidebar">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+          <!-- Segmented Control [ Chat | Notas | Work ] -->
+          <div class="segmented-control">
+            <button class="segment-btn active" data-mode="chat" id="seg-chat">Chat</button>
+            <button class="segment-btn" data-mode="notes" id="seg-notes">Notas</button>
+            <button class="segment-btn" data-mode="work" id="seg-work">Work</button>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <!-- Botão de Definições (Abre Definições → Inteligência Artificial) -->
+          <button class="topbar-settings-btn" id="btn-open-settings" title="Definições → Inteligência Artificial">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <span>Definições</span>
+          </button>
+          <a href="/test-page/" target="_blank" class="topbar-link-btn" title="Simulador de Questões da Extensão">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </a>
+        </div>
+      </header>
+
+      <!-- Área de Conteúdo / Conversação -->
+      <div class="chat-viewport" id="chat-viewport">
+        <!-- ESTADO VAZIO / WELCOME (IGUAL CHATGPT) -->
+        <div class="welcome-container" id="welcome-view">
+          <h1 class="welcome-heading">Por onde começamos?</h1>
+
+          <!-- Pílula de Entrada Central (Padrão ChatGPT) -->
+          <div class="chatgpt-input-card">
+            <!-- Anexo de imagem preview (se houver) -->
+            <div class="input-attachment-preview" id="attachment-preview" style="display: none;">
+              <img id="attachment-img" src="" alt="Anexo">
+              <button type="button" class="btn-remove-attachment" id="btn-remove-attachment">✕</button>
+            </div>
+
+            <div class="input-row">
+              <button class="input-btn btn-plus" id="btn-attachment" title="Anexar arquivos ou capturas">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+              <input type="file" id="hidden-file-input" accept="image/*" style="display: none;">
+
+              <textarea
+                class="chatgpt-textarea"
+                id="main-chat-input"
+                placeholder="Perguntar ao assistente..."
+                rows="1"
+              ></textarea>
+
+              <div class="input-trailing-actions">
+                <button class="input-btn btn-mic" id="btn-mic-input" title="Entrada por voz">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                </button>
+                <button class="input-btn btn-send" id="btn-send-message" title="Enviar mensagem">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- SEÇÃO MODERNA COM AS FERRAMENTAS DO APP (SEM EMOJIS, APENAS ÍCONES ELEGANTES) -->
+          <div class="modern-tools-section">
+            <div class="tools-grid">
+              <!-- 1. Resumir -->
+              <button class="modern-tool-card" data-action="summarize">
+                <div class="tool-icon-box cyan">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                  </svg>
+                </div>
+                <div class="tool-info">
+                  <div class="tool-title">Resumir</div>
+                  <div class="tool-subtitle">Sintetiza pontos-chave</div>
+                </div>
+              </button>
+
+              <!-- 2. Explicar -->
+              <button class="modern-tool-card" data-action="explain">
+                <div class="tool-icon-box amber">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 18h6"/>
+                    <path d="M10 22h4"/>
+                    <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>
+                  </svg>
+                </div>
+                <div class="tool-info">
+                  <div class="tool-title">Explicar</div>
+                  <div class="tool-subtitle">Didática passo a passo</div>
+                </div>
+              </button>
+
+              <!-- 3. Diagrama -->
+              <button class="modern-tool-card" data-action="diagram">
+                <div class="tool-icon-box purple">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="6" y1="3" x2="6" y2="15"/>
+                    <circle cx="18" cy="6" r="3"/>
+                    <circle cx="6" cy="18" r="3"/>
+                    <path d="M18 9a9 9 0 0 1-9 9"/>
+                  </svg>
+                </div>
+                <div class="tool-info">
+                  <div class="tool-title">Diagrama</div>
+                  <div class="tool-subtitle">Gráfico visual Mermaid</div>
+                </div>
+              </button>
+
+              <!-- 4. Gerar Imagem -->
+              <button class="modern-tool-card" data-action="image">
+                <div class="tool-icon-box pink">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                </div>
+                <div class="tool-info">
+                  <div class="tool-title">Gerar Imagem</div>
+                  <div class="tool-subtitle">Arte conceitual de IA</div>
+                </div>
+              </button>
+
+              <!-- 5. Resolver Questão -->
+              <button class="modern-tool-card" data-action="solve">
+                <div class="tool-icon-box emerald">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <circle cx="12" cy="12" r="6"/>
+                    <circle cx="12" cy="12" r="2"/>
+                  </svg>
+                </div>
+                <div class="tool-info">
+                  <div class="tool-title">Resolver Questão</div>
+                  <div class="tool-subtitle">Gabarito e análise</div>
+                </div>
+              </button>
+
+              <!-- 6. Flashcards -->
+              <button class="modern-tool-card" data-action="flashcards">
+                <div class="tool-icon-box orange">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                    <polyline points="2 17 12 22 22 17"/>
+                    <polyline points="2 12 12 17 22 12"/>
+                  </svg>
+                </div>
+                <div class="tool-info">
+                  <div class="tool-title">Flashcards</div>
+                  <div class="tool-subtitle">Memorização ativa</div>
+                </div>
+              </button>
+
+              <!-- 7. Traduzir -->
+              <button class="modern-tool-card" data-action="translate">
+                <div class="tool-icon-box teal">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="2" y1="12" x2="22" y2="12"/>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                  </svg>
+                </div>
+                <div class="tool-info">
+                  <div class="tool-title">Traduzir</div>
+                  <div class="tool-subtitle">Adaptação multilíngue</div>
+                </div>
+              </button>
+
+              <!-- 8. Perguntar / Chat -->
+              <button class="modern-tool-card" data-action="ask">
+                <div class="tool-icon-box indigo">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  </svg>
+                </div>
+                <div class="tool-info">
+                  <div class="tool-title">Perguntar / Chat</div>
+                  <div class="tool-subtitle">Tire qualquer dúvida</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- MENSAGENS DO CHAT (THREAT VIEW) -->
+        <div class="chat-messages-container" id="chat-messages" style="display: none;">
+          <!-- Mensagens renderizadas dinamicamente aqui -->
+        </div>
+
+        <!-- ======================================================== -->
+        <!-- SISTEMA DE BLOCOS DE NOTAS INTELIGENTES (WEB VIEW DEDICADA) -->
+        <!-- ======================================================== -->
+        <div class="notes-workspace-container" id="notes-view" style="display: none;">
+          <!-- Top Bar das Notas -->
+          <div class="notes-header">
+            <div class="notes-header-left">
+              <h2 class="notes-title">Notas</h2>
+              <span class="notes-count-badge" id="notes-total-count">0 notas</span>
+            </div>
+            <div class="notes-header-actions">
+              <button class="btn-primary-note" id="btn-web-new-note">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>+ Nova nota</span>
+              </button>
+              <button class="btn-ai-note" id="btn-web-ai-note">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
+                <span>Criar com IA</span>
+              </button>
+              <div class="view-toggle-btns">
+                <button class="icon-toggle-btn active" id="btn-view-grid" title="Visualização em Grelha">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                </button>
+                <button class="icon-toggle-btn" id="btn-view-list" title="Visualização em Lista">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                </button>
+              </div>
+              <button class="icon-toggle-btn" id="btn-manage-taxonomies" title="Gerir Categorias e Etiquetas">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h16"/><path d="M4 15h16"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Filtros e Barra de Pesquisa de Notas -->
+          <div class="notes-controls-bar">
+            <!-- Barra de Pesquisa -->
+            <div class="notes-search-wrapper">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="notes-search-input" placeholder="Pesquisar por título ou conteúdo..." />
+              <button class="btn-clear-search" id="btn-clear-notes-search" style="display: none;">✕</button>
+            </div>
+
+            <!-- Navegação de Status (Todas, Favoritas, Fixadas, Arquivadas, Lixo) -->
+            <div class="notes-status-tabs">
+              <button class="status-tab active" data-status="all">Todas</button>
+              <button class="status-tab" data-status="pinned">Fixadas</button>
+              <button class="status-tab" data-status="favorites">Favoritas</button>
+              <button class="status-tab" data-status="archived">Arquivadas</button>
+              <button class="status-tab" data-status="trash">Lixo</button>
+            </div>
+
+            <!-- Ordenação -->
+            <div class="notes-sort-wrapper">
+              <select id="notes-sort-select">
+                <option value="updated">Última edição</option>
+                <option value="created">Data de criação</option>
+                <option value="title">Título (A-Z)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Filtros Ativos (Categorias, Etiquetas e Cores) -->
+          <div class="notes-filter-chips-bar" id="notes-filter-chips-bar">
+            <!-- Gerado dinamicamente com categorias, etiquetas e paleta de cores -->
+          </div>
+
+          <!-- Grelha / Lista de Cards de Notas -->
+          <div class="notes-grid-container grid-mode" id="notes-grid-container">
+            <!-- Renderizado dinamicamente via JS -->
+          </div>
+        </div>
+
+        <!-- MODAL DO EDITOR COMPLETO DE NOTAS (WEB) -->
+        <div class="modal-backdrop" id="modal-note-editor" style="display: none;">
+          <div class="note-editor-card">
+            <!-- Topo do Editor -->
+            <div class="note-editor-header">
+              <div class="note-editor-status">
+                <span id="note-save-indicator" class="status-saved">Guardado</span>
+                <span class="note-timestamps" id="note-timestamps"></span>
+              </div>
+              <div class="note-editor-actions">
+                <button type="button" class="btn-editor-ai" id="btn-editor-ai">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
+                  <span>Assistente de IA</span>
+                </button>
+                <!-- Paleta de cores dropdown com ícone SVG de paleta -->
+                <div class="color-picker-dropdown-wrapper">
+                  <button type="button" class="btn-editor-icon" id="btn-editor-color" title="Alterar cor da nota">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+                  </button>
+                  <div class="color-palette-popup" id="color-palette-popup" style="display: none;">
+                    <!-- 12 cores renderizadas aqui -->
+                  </div>
+                </div>
+                <!-- Pin & Favorite com ícones SVG -->
+                <button type="button" class="btn-editor-icon" id="btn-editor-pin" title="Fixar">
+                  <svg id="svg-editor-pin" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-2l-3-4V4h1V2H7v2h1v7l-3 4v2z"/></svg>
+                </button>
+                <button type="button" class="btn-editor-icon" id="btn-editor-fav" title="Favoritar">
+                  <svg id="svg-editor-fav" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                </button>
+                <button type="button" class="btn-close-modal" id="btn-close-note-editor">✕</button>
+              </div>
+            </div>
+
+            <!-- Categoria e Etiquetas Bar -->
+            <div class="note-metadata-bar">
+              <select id="editor-category-select">
+                <option value="">Sem categoria</option>
+              </select>
+              <button type="button" class="btn-add-tag-inline" id="btn-add-cat-inline" title="Criar nova categoria">+ Categoria</button>
+              <div class="editor-tags-list" id="editor-tags-list"></div>
+              <button type="button" class="btn-add-tag-inline" id="btn-add-tag-inline">+ Etiqueta</button>
+            </div>
+
+            <!-- Toolbar de Formatação Rica -->
+            <div class="note-formatting-toolbar">
+              <button type="button" class="fmt-btn" data-cmd="bold" title="Negrito"><b>B</b></button>
+              <button type="button" class="fmt-btn" data-cmd="italic" title="Itálico"><i>I</i></button>
+              <button type="button" class="fmt-btn" data-cmd="heading" title="Título">H2</button>
+              <button type="button" class="fmt-btn" data-cmd="bullet" title="Lista com marcadores">• Lista</button>
+              <button type="button" class="fmt-btn" data-cmd="checklist" title="Checklist de Tarefas">☑ Tarefas</button>
+              <button type="button" class="fmt-btn" data-cmd="code" title="Bloco de código">&lt;/&gt;</button>
+              <div class="word-counter-stats" id="word-counter-stats">0 palavras • 0 carateres</div>
+            </div>
+
+            <!-- Corpo de Edição -->
+            <div class="note-editor-body">
+              <input type="text" id="editor-note-title" class="editor-title-input" placeholder="Título da nota" />
+              <textarea id="editor-note-content" class="editor-content-textarea" placeholder="Comece a escrever a sua nota..."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODAL PRÉ-VISUALIZAÇÃO DE IA (NUNCA SUBSTITUI SILENCIOSAMENTE) -->
+        <div class="modal-backdrop" id="modal-ai-preview" style="display: none;">
+          <div class="modal-card" style="max-width: 620px;">
+            <div class="modal-header">
+              <h3 id="ai-preview-action-title">Assistente de IA</h3>
+              <button class="btn-close-modal" id="btn-close-ai-preview">✕</button>
+            </div>
+            <div class="modal-body">
+              <p style="font-size: 0.85rem; color: #a1a1aa; margin-bottom: 0.75rem;">
+                Pré-visualize a sugestão da inteligência artificial antes de aplicar às suas anotações:
+              </p>
+              <div class="ai-preview-box" id="ai-preview-content"></div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 0.5rem; padding: 1rem 1.5rem; border-top: 1px solid #27272a;">
+              <button type="button" class="btn-cancel" id="btn-ai-preview-cancel" style="background: transparent; color: #a1a1aa; border: 1px solid #3f3f46; padding: 0.45rem 1rem; border-radius: 8px; cursor: pointer;">Cancelar</button>
+              <button type="button" class="btn-secondary" id="btn-ai-preview-insert" style="background: #10a37f; color: #fff; border: none; padding: 0.45rem 1rem; border-radius: 8px; font-weight: 600; cursor: pointer;">Inserir no Final</button>
+              <button type="button" class="btn-primary" id="btn-ai-preview-replace" style="background: #2563eb; color: #fff; border: none; padding: 0.45rem 1rem; border-radius: 8px; font-weight: 600; cursor: pointer;">Substituir</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODAL MENU DE AÇÕES DO ASSISTENTE DE IA (ÍCONES SVG REAIS, ZERO EMOJIS) -->
+        <div class="modal-backdrop" id="modal-ai-actions-menu" style="display: none;">
+          <div class="modal-card" style="max-width: 500px;">
+            <div class="modal-header">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
+                <h3>Ações do Assistente de IA</h3>
+              </div>
+              <button class="btn-close-modal" id="btn-close-ai-actions">✕</button>
+            </div>
+            <div class="modal-body">
+              <div class="ai-actions-list-grid">
+                <button class="ai-action-item-btn" data-action="summarize">
+                  <span class="action-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                  </span>
+                  <div class="action-texts">
+                    <span class="action-title">Resumir</span>
+                    <span class="action-desc">Transformar em síntese organizada</span>
+                  </div>
+                </button>
+                <button class="ai-action-item-btn" data-action="organize">
+                  <span class="action-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#a855f7" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                  </span>
+                  <div class="action-texts">
+                    <span class="action-title">Organizar</span>
+                    <span class="action-desc">Estruturar anotações em secções</span>
+                  </div>
+                </button>
+                <button class="ai-action-item-btn" data-action="improve">
+                  <span class="action-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#34d399" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                  </span>
+                  <div class="action-texts">
+                    <span class="action-title">Melhorar texto</span>
+                    <span class="action-desc">Corrigir clareza e gramática</span>
+                  </div>
+                </button>
+                <button class="ai-action-item-btn" data-action="expand">
+                  <span class="action-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fbbf24" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                  </span>
+                  <div class="action-texts">
+                    <span class="action-title">Expandir conteúdo</span>
+                    <span class="action-desc">Desenvolver ideia com detalhes</span>
+                  </div>
+                </button>
+                <button class="ai-action-item-btn" data-action="keypoints">
+                  <span class="action-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#f87171" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                  </span>
+                  <div class="action-texts">
+                    <span class="action-title">Extrair pontos-chave</span>
+                    <span class="action-desc">Identificar conceitos importantes</span>
+                  </div>
+                </button>
+                <button class="ai-action-item-btn" data-action="checklist">
+                  <span class="action-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#10b981" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  </span>
+                  <div class="action-texts">
+                    <span class="action-title">Criar checklist</span>
+                    <span class="action-desc">Transformar em tarefas práticas</span>
+                  </div>
+                </button>
+                <button class="ai-action-item-btn" data-action="review_questions">
+                  <span class="action-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#60a5fa" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  </span>
+                  <div class="action-texts">
+                    <span class="action-title">Perguntas de revisão</span>
+                    <span class="action-desc">Perguntas e respostas de estudo</span>
+                  </div>
+                </button>
+                <button class="ai-action-item-btn" data-action="suggest_title">
+                  <span class="action-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#f472b6" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                  </span>
+                  <div class="action-texts">
+                    <span class="action-title">Sugerir título</span>
+                    <span class="action-desc">Propor título inteligente</span>
+                  </div>
+                </button>
+                <button class="ai-action-item-btn" data-action="suggest_taxonomy">
+                  <span class="action-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#c084fc" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                  </span>
+                  <div class="action-texts">
+                    <span class="action-title">Sugerir categoria e etiquetas</span>
+                    <span class="action-desc">Recomendar organização</span>
+                  </div>
+                </button>
+                <button class="ai-action-item-btn" data-action="illustration">
+                  <span class="action-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#ec4899" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                  </span>
+                  <div class="action-texts">
+                    <span class="action-title">Gerar ilustração</span>
+                    <span class="action-desc">Criar arte ou imagem com IA</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODAL GESTÃO DE CATEGORIAS E ETIQUETAS -->
+        <div class="modal-backdrop" id="modal-manage-taxonomies" style="display: none;">
+          <div class="modal-card" style="max-width: 520px;">
+            <div class="modal-header">
+              <h3>Gestão de Categorias e Etiquetas</h3>
+              <button class="btn-close-modal" id="btn-close-taxonomies-modal">✕</button>
+            </div>
+            <div class="modal-body">
+              <!-- Categorias -->
+              <h4 style="font-size: 0.95rem; color: #38bdf8; margin-bottom: 0.5rem;">Categorias</h4>
+              <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+                <input type="text" id="input-new-cat-name" placeholder="Nova categoria (ex: Estudos)" style="flex: 1; background: #121214; border: 1px solid #27272a; padding: 0.45rem 0.65rem; border-radius: 6px; color: #fff; font-size: 0.85rem;" />
+                <button type="button" id="btn-submit-new-cat" style="background: #2563eb; color: #fff; border: none; padding: 0.45rem 0.85rem; border-radius: 6px; font-weight: 600; cursor: pointer;">+</button>
+              </div>
+              <div id="modal-categories-list" style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1.25rem;"></div>
+
+              <!-- Etiquetas -->
+              <h4 style="font-size: 0.95rem; color: #34d399; margin-bottom: 0.5rem;">Etiquetas</h4>
+              <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+                <input type="text" id="input-new-tag-name" placeholder="Nova etiqueta (ex: urgente)" style="flex: 1; background: #121214; border: 1px solid #27272a; padding: 0.45rem 0.65rem; border-radius: 6px; color: #fff; font-size: 0.85rem;" />
+                <button type="button" id="btn-submit-new-tag" style="background: #059669; color: #fff; border: none; padding: 0.45rem 0.85rem; border-radius: 6px; font-weight: 600; cursor: pointer;">+</button>
+              </div>
+              <div id="modal-tags-list" style="display: flex; flex-wrap: wrap; gap: 0.4rem;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BARRA DE ENTRADA FIXA INFERIOR (ESTILO CHATGPT QUANDO EM CONVERSA) -->
+      <div class="fixed-bottom-bar" id="fixed-bottom-bar" style="display: none;">
+        <div class="bottom-input-container">
+          <div class="input-attachment-preview" id="bottom-attachment-preview" style="display: none;">
+            <img id="bottom-attachment-img" src="" alt="Anexo">
+            <button type="button" class="btn-remove-attachment" id="btn-bottom-remove-attachment">✕</button>
+          </div>
+
+          <div class="input-row">
+            <button class="input-btn btn-plus" id="btn-bottom-attachment" title="Anexar arquivos">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+
+            <textarea
+              class="chatgpt-textarea"
+              id="bottom-chat-input"
+              placeholder="Perguntar ao ChatGPT"
+              rows="1"
+            ></textarea>
+
+            <div class="input-trailing-actions">
+              <button class="input-btn btn-mic" id="btn-bottom-mic" title="Entrada por voz">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              </button>
+              <button class="input-btn btn-send" id="btn-bottom-send" title="Enviar mensagem">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-disclaimer  <!-- MODAL DEFINIÇÕES → INTELIGÊNCIA ARTIFICIAL -->
+  <div class="modal-backdrop" id="modal-settings" style="display: none;">
+    <div class="modal-card settings-modal-card">
+      <div class="modal-header">
+        <div class="modal-header-title">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#38bdf8" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          <h3>Definições → Inteligência Artificial</h3>
+        </div>
+        <button class="btn-close-modal" id="btn-close-settings">✕</button>
+      </div>
+
+      <!-- Navegação de Abas -->
+      <div class="settings-tabs-nav">
+        <button class="settings-tab-btn active" data-tab="providers" id="tab-btn-providers">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
+          <span>Fornecedores & Modelos</span>
+        </button>
+        <button class="settings-tab-btn" data-tab="voice" id="tab-btn-voice">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          <span>Voz & Áudio</span>
+        </button>
+      </div>
+
+      <div class="modal-body settings-modal-body">
+        <!-- ABA 1: FORNECEDORES DE IA -->
+        <div class="settings-tab-content active" id="tab-content-providers">
+          <!-- Seleção do Fornecedor Ativo -->
+          <div class="settings-section-block">
+            <label class="settings-block-label">Fornecedor Ativo Padrão para os Pedidos:</label>
+            <div class="provider-switch-group">
+              <button type="button" class="provider-select-card active" data-provider-choice="gemini" id="choice-provider-gemini">
+                <span class="provider-card-name">Google Gemini</span>
+                <span class="provider-card-badge">Multimodal / Voz</span>
+              </button>
+              <button type="button" class="provider-select-card" data-provider-choice="openrouter" id="choice-provider-openrouter">
+                <span class="provider-card-name">OpenRouter</span>
+                <span class="provider-card-badge">400+ Modelos / Grátis & Pagos</span>
+              </button>
+              <button type="button" class="provider-select-card" data-provider-choice="typesafe" id="choice-provider-typesafe">
+                <span class="provider-card-name">TypeSafe JEV</span>
+                <span class="provider-card-badge">Ultrarrápido</span>
+              </button>
+              <button type="button" class="provider-select-card" data-provider-choice="mock" id="choice-provider-mock">
+                <span class="provider-card-name">Offline Local</span>
+                <span class="provider-card-badge">Sem Rede</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- ÁREA: GOOGLE GEMINI -->
+          <div class="provider-config-box" id="box-gemini-config">
+            <div class="provider-config-header">
+              <div class="provider-info-left">
+                <div class="provider-logo-badge gemini-gradient">G</div>
+                <div>
+                  <h4 class="provider-heading">Google Gemini</h4>
+                  <p class="provider-sub">Modelos oficiais de alta performance com suporte nativo a visão, código e voz.</p>
+                </div>
+              </div>
+              <div class="connection-status-pill" id="badge-status-gemini">
+                <span class="status-dot"></span>
+                <span class="status-text">A verificar...</span>
+              </div>
+            </div>
+
+            <div class="provider-fields">
+              <div class="form-row">
+                <label class="field-label">Chave API Google Gemini (AI Studio):</label>
+                <div class="input-with-actions">
+                  <input type="password" id="input-gemini-key" placeholder="AIzaSy... ou AQ..." autocomplete="off">
+                  <button type="button" class="btn-icon-input" id="btn-toggle-show-gemini" title="Ver / Ocultar chave">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+                <div class="key-actions-row">
+                  <button type="button" class="btn-secondary-action" id="btn-test-gemini">Testar Ligação</button>
+                  <button type="button" class="btn-primary-action" id="btn-save-gemini">Guardar Chave</button>
+                  <button type="button" class="btn-danger-action" id="btn-remove-gemini">Remover</button>
+                  <a href="https://aistudio.google.com/" target="_blank" class="external-key-link">Obter chave Google AI Studio ↗</a>
+                </div>
+                <div class="action-feedback-msg" id="feedback-gemini"></div>
+              </div>
+
+              <!-- Seleção Dinâmica de Modelo Gemini -->
+              <div class="form-row">
+                <div class="label-with-refresh">
+                  <label class="field-label">Modelo Gemini Selecionado:</label>
+                  <button type="button" class="btn-refresh-models" id="btn-refresh-gemini-models" title="Atualizar lista oficial">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    <span>Atualizar lista</span>
+                  </button>
+                </div>
+                <select class="settings-select" id="select-gemini-model">
+                  <option value="gemini-2.0-flash">Carregando modelos oficiais...</option>
+                </select>
+                <div class="model-info-banner" id="banner-gemini-model-info">
+                  <span id="gemini-model-desc">Modelo topo de linha mais rápido e moderno do Google, multimodal e gratuito no AI Studio.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ÁREA: OPENROUTER -->
+          <div class="provider-config-box" id="box-openrouter-config">
+            <div class="provider-config-header">
+              <div class="provider-info-left">
+                <div class="provider-logo-badge openrouter-gradient">OR</div>
+                <div>
+                  <h4 class="provider-heading">OpenRouter</h4>
+                  <p class="provider-sub">Acesso unificado a centenas de modelos (DeepSeek, Claude, Llama 3, GPT-4o, etc.).</p>
+                </div>
+              </div>
+              <div class="connection-status-pill" id="badge-status-openrouter">
+                <span class="status-dot"></span>
+                <span class="status-text">A verificar...</span>
+              </div>
+            </div>
+
+            <div class="provider-fields">
+              <div class="form-row">
+                <label class="field-label">Chave API OpenRouter:</label>
+                <div class="input-with-actions">
+                  <input type="password" id="input-openrouter-key" placeholder="sk-or-v1-..." autocomplete="off">
+                  <button type="button" class="btn-icon-input" id="btn-toggle-show-openrouter" title="Ver / Ocultar chave">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+                <div class="key-actions-row">
+                  <button type="button" class="btn-secondary-action" id="btn-test-openrouter">Testar Ligação</button>
+                  <button type="button" class="btn-primary-action" id="btn-save-openrouter">Guardar Chave</button>
+                  <button type="button" class="btn-danger-action" id="btn-remove-openrouter">Remover</button>
+                  <a href="https://openrouter.ai/keys" target="_blank" class="external-key-link">Obter chave OpenRouter ↗</a>
+                </div>
+                <div class="action-feedback-msg" id="feedback-openrouter"></div>
+              </div>
+
+              <!-- Seleção Dinâmica de Modelo OpenRouter -->
+              <div class="form-row">
+                <div class="label-with-refresh">
+                  <label class="field-label">Modelo OpenRouter Selecionado:</label>
+                  <div class="model-filter-controls">
+                    <div class="filter-pills">
+                      <button type="button" class="filter-pill active" data-filter="all">Todos</button>
+                      <button type="button" class="filter-pill" data-filter="free">Apenas Grátis</button>
+                      <button type="button" class="filter-pill" data-filter="paid">Pagos</button>
+                    </div>
+                    <button type="button" class="btn-refresh-models" id="btn-refresh-openrouter-models" title="Atualizar lista oficial">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                      <span>Atualizar lista</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Campo de busca rápida no dropdown -->
+                <div class="model-search-wrap">
+                  <input type="text" id="input-search-openrouter-model" placeholder="🔍 Pesquisar modelo (ex: deepseek, llama, claude)..." class="settings-search-input">
+                </div>
+
+                <select class="settings-select" id="select-openrouter-model">
+                  <option value="deepseek/deepseek-r1:free">Carregando modelos oficiais...</option>
+                </select>
+                <div class="model-info-banner" id="banner-openrouter-model-info">
+                  <span id="openrouter-model-pricing">Preço: Gratuito</span> • 
+                  <span id="openrouter-model-context">Contexto: 64k</span> • 
+                  <span id="openrouter-model-caps">Modalidade: Texto</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ABA 2: VOZ & ÁUDIO -->
+        <div class="settings-tab-content" id="tab-content-voice">
+          <div class="settings-section-block">
+            <h4 class="settings-block-title">Modo de Conversação por Voz</h4>
+            <p class="settings-block-sub">Escolha a experiência de voz adaptada ao seu estilo de uso:</p>
+            
+            <div class="voice-modes-grid">
+              <div class="voice-mode-card active" data-voice-mode="realtime" id="mode-card-realtime">
+                <div class="mode-card-header">
+                  <span class="mode-title">Modo A — Conversação em Tempo Real</span>
+                  <span class="badge-rec">Recomendado</span>
+                </div>
+                <p class="mode-desc">Abre uma sessão imersiva de voz com orbe dinâmico. Você fala livremente, a IA responde por áudio e você pode interrompê-la a qualquer instante.</p>
+                <ul class="mode-features">
+                  <li>✓ Diálogo bidirecional contínuo</li>
+                  <li>✓ Respostas faladas instantâneas com interrupção</li>
+                  <li>✓ Feedback visual com ondas sonoras em tempo real</li>
+                </ul>
+              </div>
+
+              <div class="voice-mode-card" data-voice-mode="dictation" id="mode-card-dictation">
+                <div class="mode-card-header">
+                  <span class="mode-title">Modo B — Falar e Ouvir (Ditado)</span>
+                </div>
+                <p class="mode-desc">O microfone transcreve sua voz diretamente para a caixa de texto do chat. A resposta pode ser lida ou ouvida individualmente pelo botão de áudio.</p>
+                <ul class="mode-features">
+                  <li>✓ Ditado preciso direto no chat</li>
+                  <li>✓ Botão de reprodução de áudio em cada mensagem</li>
+                  <li>✓ Ideal para mensagens longas e revisões antes do envio</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section-block">
+            <h4 class="settings-block-title">Configurações de Síntese de Fala (TTS)</h4>
+            <div class="tts-settings-row">
+              <div class="tts-setting-item">
+                <label class="field-label">Velocidade de Reprodução:</label>
+                <select class="settings-select" id="select-tts-speed" style="max-width: 180px;">
+                  <option value="0.85">0.85x (Mais Lento)</option>
+                  <option value="1.0" selected>1.0x (Padrão)</option>
+                  <option value="1.15">1.15x (Rápido)</option>
+                  <option value="1.3">1.3x (Muito Rápido)</option>
+                </select>
+              </div>
+              <div class="tts-setting-item">
+                <label class="field-label">Teste de Som:</label>
+                <button type="button" class="btn-secondary-action" id="btn-test-tts">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                  <span>Ouvir Exemplo de Voz</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE CONVERSAÇÃO POR VOZ EM TEMPO REAL (MODO A) -->
+  <div class="modal-backdrop" id="modal-live-voice" style="display: none;">
+    <div class="live-voice-container">
+      <div class="live-voice-header">
+        <div class="live-voice-brand">
+          <div class="live-voice-pulse-dot"></div>
+          <span class="live-voice-title">Sessão de Voz em Tempo Real</span>
+        </div>
+        <button class="live-voice-btn-close" id="btn-live-voice-close" title="Encerrar conversa por voz">✕</button>
+      </div>
+
+      <!-- Orbe / Visualizador de Áudio Central -->
+      <div class="live-voice-visualizer-wrap">
+        <div class="live-voice-orb" id="live-voice-orb">
+          <div class="orb-ring ring-1"></div>
+          <div class="orb-ring ring-2"></div>
+          <div class="orb-core"></div>
+        </div>
+        <canvas id="live-voice-canvas" width="400" height="120" class="live-voice-canvas"></canvas>
+      </div>
+
+      <!-- Estado e Transcrição em Tempo Real -->
+      <div class="live-voice-status-box">
+        <div class="live-voice-status-badge" id="live-voice-status-badge">A ouvir...</div>
+        <div class="live-voice-transcript-text" id="live-voice-transcript">Fale agora com o seu assistente de IA...</div>
+      </div>
+
+      <!-- Barra de Ações de Voz Inferior -->
+      <div class="live-voice-actions-bar">
+        <button class="live-voice-action-btn secondary" id="btn-live-voice-interrupt" title="Interromper fala da IA">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+          <span>Interromper</span>
+        </button>
+
+        <button class="live-voice-action-btn primary active" id="btn-live-voice-mic-toggle" title="Ligar / Desligar microfone">
+          <svg class="icon-mic-on" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </button>
+
+        <button class="live-voice-action-btn danger" id="btn-live-voice-end" title="Terminar sessão">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-6-6 19.8 19.8 0 0 1-3.12-8.69 2 2 0 0 1 2-2.18h3a2 2 0 0 1 2 1.72 12.81 12.81 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.38 9.32"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
+          <span>Terminar</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

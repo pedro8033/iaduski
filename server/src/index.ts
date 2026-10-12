@@ -49,9 +49,41 @@ const setProvider = (newProvider: string) => {
   }
 };
 
+const setSettings = (settings: { geminiApiKey?: string; provider?: string; model?: string }) => {
+  if (settings.provider) {
+    setProvider(settings.provider);
+  }
+  try {
+    if (fs.existsSync(serverEnvPath)) {
+      let content = fs.readFileSync(serverEnvPath, 'utf8');
+      if (settings.geminiApiKey !== undefined) {
+        process.env.GEMINI_API_KEY = settings.geminiApiKey;
+        if (/^GEMINI_API_KEY=.*$/m.test(content)) {
+          content = content.replace(/^GEMINI_API_KEY=.*$/m, `GEMINI_API_KEY=${settings.geminiApiKey}`);
+        } else {
+          content += `\nGEMINI_API_KEY=${settings.geminiApiKey}`;
+        }
+      }
+      if (settings.model) {
+        process.env.AI_MODEL = settings.model;
+        if (/^AI_MODEL=.*$/m.test(content)) {
+          content = content.replace(/^AI_MODEL=.*$/m, `AI_MODEL=${settings.model}`);
+        } else {
+          content += `\nAI_MODEL=${settings.model}`;
+        }
+      }
+      fs.writeFileSync(serverEnvPath, content, 'utf8');
+      console.log('[server] Configurações atualizadas e persistidas em .env');
+    }
+  } catch (err) {
+    console.warn('[server] Falha ao persistir configurações:', (err as Error).message);
+  }
+};
+
 const app = createApp({
   provider: getProvider,
   setProvider,
+  setSettings,
   corsOrigins: process.env.CORS_ORIGINS,
   serveTestPage: process.env.NODE_ENV !== 'production',
 });
@@ -59,5 +91,6 @@ const app = createApp({
 app.listen(port, host, () => {
   const currentProvider = getProvider();
   console.log(`[server] http://${host}:${port}  provider=${currentProvider.name}`);
-  console.log(`[server] página de teste: http://${host}:${port}/test-page/`);
+  console.log(`[server] 🚀 Assistente IA Web:  http://${host}:${port}/`);
+  console.log(`[server] 📝 Simulado de testes: http://${host}:${port}/test-page/`);
 });

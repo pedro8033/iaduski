@@ -9,6 +9,9 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import com.example.aiquestionassistant.ui.main.MainScreen
+import com.example.aiquestionassistant.ui.notes.NoteEditorScreen
+import com.example.aiquestionassistant.ui.notes.NotesScreen
+import com.example.aiquestionassistant.ui.settings.SettingsScreen
 
 @Composable
 fun MainNavigation() {
@@ -20,8 +23,29 @@ fun MainNavigation() {
     entryProvider =
       entryProvider {
         entry<Main> {
-          MainScreen(onItemClick = { navKey -> backStack.add(navKey) }, modifier = Modifier.safeDrawingPadding().padding(16.dp))
+          MainScreen(onItemClick = { navKey -> backStack.add(navKey) }, modifier = Modifier.safeDrawingPadding())
+        }
+        entry<NotesScreenKey> {
+          NotesScreen(
+            onBack = { backStack.removeLastOrNull() },
+            onOpenNote = { noteId -> backStack.add(NoteEditorKey(noteId)) },
+            modifier = Modifier.safeDrawingPadding()
+          )
+        }
+        entry<NoteEditorKey> { key ->
+          NoteEditorScreen(
+            noteId = key.noteId,
+            onBack = { backStack.removeLastOrNull() },
+            modifier = Modifier.safeDrawingPadding()
+          )
+        }
+        entry<SettingsScreenKey> {
+          SettingsScreen(
+            onBack = { backStack.removeLastOrNull() },
+            modifier = Modifier.safeDrawingPadding()
+          )
         }
       },
   )
 }
+
