@@ -36,6 +36,8 @@ yarn-error.log*
 *.log
 gemini_raw_out.json
 test_gemini.mjs
+test_*.mjs
+server/test_*.mjs
 server/scratch_*.js
 server/data/*.json
 

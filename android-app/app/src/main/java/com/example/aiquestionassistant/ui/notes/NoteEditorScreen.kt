@@ -27,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Clear
@@ -87,6 +88,7 @@ import com.example.aiquestionassistant.data.NoteAiAction
 import com.example.aiquestionassistant.data.NoteCategory
 import com.example.aiquestionassistant.data.NoteColor
 import com.example.aiquestionassistant.data.NoteTag
+import com.example.aiquestionassistant.data.NoteTemplates
 import com.example.aiquestionassistant.data.NotesLocalRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -137,6 +139,7 @@ fun NoteEditorScreen(
     // Estado de Pré-visualização da IA (Requisito 5: NUNCA substituir silenciosamente)
     var aiPreviewResult by remember { mutableStateOf<Pair<NoteAiAction, String>?>(null) }
     var isAiProcessing by remember { mutableStateOf(false) }
+    var isPreviewMode by remember { mutableStateOf(false) }
 
     // Carregar Nota existente
     LaunchedEffect(noteId) {
@@ -243,7 +246,17 @@ fun NoteEditorScreen(
                     )
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Botão Alternar Visualização / Edição
+                    Button(
+                        onClick = { isPreviewMode = !isPreviewMode },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isPreviewMode) Color(0xFFC84B15) else Color(0xFF262933)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(34.dp)
+                    ) {
+                        Text(if (isPreviewMode) "Editar" else "Ver", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
                     // Botão Assistente de IA
                     Button(
                         onClick = { showAiSheet = true },
@@ -352,6 +365,21 @@ fun NoteEditorScreen(
                     Icon(Icons.Default.Checklist, contentDescription = "Checklist", tint = Color.LightGray, modifier = Modifier.size(18.dp))
                 }
 
+                // Inserir Modelo de Tabela (Segundo Elemento & Significado)
+                IconButton(onClick = {
+                    val tmpl = NoteTemplates.SURGICAL_TERMINOLOGY
+                    if (contentValue.text.isBlank()) {
+                        contentValue = TextFieldValue(tmpl.content)
+                        if (title.isBlank()) title = tmpl.title
+                        customColorHex = tmpl.color
+                    } else {
+                        contentValue = TextFieldValue("${contentValue.text}\n\n${tmpl.content}")
+                    }
+                    Toast.makeText(context, "Modelo de tabela adicionado!", Toast.LENGTH_SHORT).show()
+                }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Category, contentDescription = "Inserir Tabela Modelo", tint = Color(0xFFC84B15), modifier = Modifier.size(18.dp))
+                }
+
                 Spacer(modifier = Modifier.weight(1f))
 
                 // Categoria e Tags seletores
@@ -429,23 +457,30 @@ fun NoteEditorScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // CONTEÚDO DA NOTA
-                BasicTextField(
-                    value = contentValue,
-                    onValueChange = { contentValue = it },
-                    modifier = Modifier.fillMaxWidth().height(450.dp),
-                    textStyle = TextStyle(
-                        color = editorSubTextColor,
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp
-                    ),
-                    decorationBox = { inner ->
-                        if (contentValue.text.isEmpty()) {
-                            Text("Escreva a sua nota aqui...", color = editorSubTextColor.copy(alpha = 0.6f), fontSize = 15.sp)
+                // CONTEÚDO DA NOTA (Edição ou Pré-visualização rica do modelo)
+                if (isPreviewMode) {
+                    NoteTablePreview(
+                        content = contentValue.text,
+                        editorSubTextColor = editorSubTextColor
+                    )
+                } else {
+                    BasicTextField(
+                        value = contentValue,
+                        onValueChange = { contentValue = it },
+                        modifier = Modifier.fillMaxWidth().height(450.dp),
+                        textStyle = TextStyle(
+                            color = editorSubTextColor,
+                            fontSize = 15.sp,
+                            lineHeight = 22.sp
+                        ),
+                        decorationBox = { inner ->
+                            if (contentValue.text.isEmpty()) {
+                                Text("Escreva a sua nota aqui...", color = editorSubTextColor.copy(alpha = 0.6f), fontSize = 15.sp)
+                            }
+                            inner()
                         }
-                        inner()
-                    }
-                )
+                    )
+                }
             }
 
             // RODAPÉ: Contagem de Palavras, Caracteres e Datas
@@ -954,3 +989,108 @@ fun NoteEditorScreen(
         )
     }
 }
+
+@Composable
+fun NoteTablePreview(
+    content: String,
+    editorSubTextColor: Color
+) {
+    val lines = content.lines()
+    val tableLines = mutableListOf<String>()
+    var inTable = false
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        lines.forEach { line ->
+            val trimmed = line.trim()
+            if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+                tableLines.add(trimmed)
+                inTable = true
+            } else {
+                if (inTable && tableLines.isNotEmpty()) {
+                    RenderMarkdownTable(tableLines)
+                    tableLines.clear()
+                    inTable = false
+                }
+                if (trimmed.isNotBlank()) {
+                    Text(
+                        text = line,
+                        color = editorSubTextColor,
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                }
+            }
+        }
+        if (tableLines.isNotEmpty()) {
+            RenderMarkdownTable(tableLines)
+        }
+    }
+}
+
+@Composable
+fun RenderMarkdownTable(lines: List<String>) {
+    if (lines.isEmpty()) return
+    val headerCells = lines[0].split("|").map { it.trim() }.filter { it.isNotEmpty() }
+    val dataRows = lines.drop(1).filter { line ->
+        val clean = line.replace("|", "").replace("-", "").replace(":", "").trim()
+        clean.isNotEmpty()
+    }.map { line ->
+        line.split("|").map { it.trim() }.filter { it.isNotEmpty() }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF7D7D2))
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // CABEÇALHO TERRACOTA / LARANJA ESCURO (IDÊNTICO À IMAGEM)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFFC84B15))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                headerCells.forEachIndexed { idx, titleText ->
+                    Text(
+                        text = titleText,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        modifier = Modifier.weight(if (idx == 0) 1f else 1.8f)
+                    )
+                }
+            }
+
+            // LINHAS DE DADOS (FUNDO ROSA/SALMÃO CLARO COM DIVISÓRIAS)
+            dataRows.forEachIndexed { rowIdx, rowCells ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(if (rowIdx % 2 == 0) Color(0xFFF7D7D2) else Color(0xFFFDE8E5))
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    rowCells.forEachIndexed { idx, cellText ->
+                        val cleanCell = cellText.removePrefix("**").removeSuffix("**").trim()
+                        Text(
+                            text = cleanCell,
+                            color = if (idx == 0) Color(0xFF991B1B) else Color(0xFF1F2937),
+                            fontWeight = if (idx == 0) FontWeight.Bold else FontWeight.Normal,
+                            fontSize = 14.sp,
+                            modifier = Modifier.weight(if (idx == 0) 1f else 1.8f)
+                        )
+                    }
+                }
+                if (rowIdx < dataRows.size - 1) {
+                    HorizontalDivider(color = Color(0xFFE8B4AC), thickness = 0.8.dp)
+                }
+            }
+        }
+    }
+}
+

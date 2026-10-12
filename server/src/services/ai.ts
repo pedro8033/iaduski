@@ -209,6 +209,96 @@ export class OpenAiCompatibleProvider implements DecisionProvider {
   }
 }
 
+export function normalizeAgentRouterModel(model?: string): string {
+  if (!model) return 'claude-opus-4-8';
+  const clean = model.trim();
+  if (clean === 'laude-opus-4-8') return 'claude-opus-4-8';
+  return clean;
+}
+
+/** Provider oficial para AgentRouter (https://agentrouter.org) com suporte a Claude Opus 4.8 / 5, DeepSeek V4 Flash e GPT-6 Astra. */
+export class AgentRouterProvider implements DecisionProvider {
+  readonly name = 'agentrouter';
+  readonly model: string;
+  readonly baseUrl: string;
+
+  constructor(
+    readonly apiKey: string,
+    model = 'claude-opus-4-8',
+    baseUrl = 'https://agentrouter.org/v1',
+    readonly timeoutMs: number = 30_000,
+  ) {
+    this.model = normalizeAgentRouterModel(model);
+    this.baseUrl = baseUrl.replace(/\/+$/, '');
+  }
+
+  async answer(question: Question): Promise<DecisionResult> {
+    if (!this.apiKey || this.apiKey.trim().length === 0) {
+      throw new ProviderError(
+        'Chave AGENTROUTER_API_KEY ausente. Configure a sua chave no painel de configurações ou no ficheiro server/.env para usar o AgentRouter.',
+        401,
+      );
+    }
+
+    let userContent: unknown = buildUserPrompt(question);
+    if (question.image) {
+      const imageUrl = question.image.startsWith('data:')
+        ? question.image
+        : `data:image/png;base64,${question.image}`;
+      userContent = [
+        { type: 'image_url', image_url: { url: imageUrl } },
+        { type: 'text', text: buildUserPrompt(question) },
+      ];
+    }
+
+    const endpoint = `${this.baseUrl}/chat/completions`;
+    let res: Response;
+    try {
+      res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey.trim()}`,
+          'HTTP-Referer': 'http://localhost:3001',
+          'X-Title': 'AI Question Assistant',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          temperature: 0,
+          max_tokens: 500,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userContent },
+          ],
+        }),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch (err) {
+      throw new ProviderError(`Falha ao contactar AgentRouter (${this.model}): ${(err as Error).message}`, 504);
+    }
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new ProviderError(`AgentRouter (${this.model}) respondeu HTTP ${res.status}: ${errText}`, 502);
+    }
+
+    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = data.choices?.[0]?.message?.content;
+    if (typeof content !== 'string') throw new ProviderError(`Resposta do AgentRouter (${this.model}) sem conteúdo`);
+
+    let reasoning: string | undefined;
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed.reasoning) reasoning = String(parsed.reasoning);
+    } catch {
+      const reasonMatch = /["']?reasoning["']?\s*:\s*["']([^"']+)["']/i.exec(content);
+      if (reasonMatch) reasoning = reasonMatch[1];
+    }
+
+    return { answer: parseModelOutput(content), reasoning };
+  }
+}
+
 /** Provider oficial para OpenRouter (suporta modelos gratuitos e pagos com autenticação Bearer). */
 export class OpenRouterProvider implements DecisionProvider {
   readonly name = 'openrouter';
@@ -278,10 +368,15 @@ export class OpenRouterProvider implements DecisionProvider {
 }
 
 export function sanitizeGeminiModel(model?: string): string {
-  if (!model) return 'gemini-flash-latest';
+  if (!model) return 'gemini-3.5-flash-lite';
   const clean = model.trim();
-  if (clean.includes('1.5') || clean.includes('2.5-flash-lite')) {
-    return 'gemini-flash-latest';
+  if (
+    clean.includes('1.5') ||
+    clean.includes('2.0') ||
+    clean.includes('2.5') ||
+    clean.includes('3-pro-image')
+  ) {
+    return 'gemini-3.5-flash-lite';
   }
   return clean;
 }
@@ -292,7 +387,7 @@ export class GeminiNativeProvider implements DecisionProvider {
   readonly model: string;
   constructor(
     readonly apiKey: string,
-    model = 'gemini-flash-latest',
+    model = 'gemini-3.5-flash-lite',
     private readonly timeoutMs = 15_000,
   ) {
     this.model = sanitizeGeminiModel(model);
@@ -300,7 +395,7 @@ export class GeminiNativeProvider implements DecisionProvider {
 
   async answer(question: Question): Promise<DecisionResult> {
     const modelsToTry = [this.model];
-    if (!modelsToTry.includes('gemini-3.5-flash')) modelsToTry.push('gemini-3.5-flash');
+    if (!modelsToTry.includes('gemini-3.5-flash-lite')) modelsToTry.push('gemini-3.5-flash-lite');
     if (!modelsToTry.includes('gemini-flash-latest')) modelsToTry.push('gemini-flash-latest');
 
     let lastError: Error | null = null;
@@ -501,7 +596,16 @@ export function createProviderFromEnv(env: NodeJS.ProcessEnv = process.env): Dec
   const provider = (env.AI_PROVIDER ?? 'gemini').toLowerCase();
   const mockDelay = Number(env.MOCK_DELAY_MS ?? 120);
 
-  // 1. OpenRouter Oficial (modelos gratuitos e pagos)
+  // 1. AgentRouter Oficial (claude-opus-4-8, claude-opus-5, deepseek-v4-flash, gpt-6-astra)
+  if (provider === 'agentrouter') {
+    const key = env.AGENTROUTER_API_KEY || env.AI_API_KEY || '';
+    const rawModel = env.AGENTROUTER_MODEL || env.AI_MODEL || 'claude-opus-4-8';
+    const model = normalizeAgentRouterModel(rawModel);
+    const baseUrl = env.AGENTROUTER_BASE_URL || 'https://agentrouter.org/v1';
+    return new AgentRouterProvider(key, model, baseUrl, Number(env.AI_TIMEOUT_MS ?? 30_000));
+  }
+
+  // 2. OpenRouter Oficial (modelos gratuitos e pagos)
   if (provider === 'openrouter') {
     const key = env.OPENROUTER_API_KEY || env.AI_API_KEY || 'anonymous';
     const model = env.OPENROUTER_MODEL || env.AI_MODEL || 'deepseek/deepseek-r1:free';
@@ -523,7 +627,7 @@ export function createProviderFromEnv(env: NodeJS.ProcessEnv = process.env): Dec
   if (provider === 'gemini' || provider === 'google') {
     const key = env.GEMINI_API_KEY || env.AI_API_KEY;
     if (key && key.trim().length > 10) {
-      const rawModel = env.GEMINI_MODEL || (env.AI_MODEL && !env.AI_MODEL.startsWith('jev') ? env.AI_MODEL : 'gemini-flash-latest');
+      const rawModel = env.GEMINI_MODEL || (env.AI_MODEL && !env.AI_MODEL.startsWith('jev') ? env.AI_MODEL : 'gemini-3.5-flash-lite');
       const model = sanitizeGeminiModel(rawModel);
       return new GeminiNativeProvider(key, model, Number(env.AI_TIMEOUT_MS ?? 15_000));
     }

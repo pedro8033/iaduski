@@ -1,5 +1,5 @@
 import type { NoteAiRequest, NoteAiResponse } from '../types/notes';
-import { GeminiNativeProvider, MockProvider, OpenAiCompatibleProvider, type DecisionProvider } from './ai';
+import { AgentRouterProvider, GeminiNativeProvider, MockProvider, OpenAiCompatibleProvider, OpenRouterProvider, type DecisionProvider } from './ai';
 
 export class NotesAiService {
   constructor(private readonly getProvider: () => DecisionProvider) {}
@@ -28,7 +28,12 @@ export class NotesAiService {
     }
 
     // Tentar provedor configurado
-    if (provider instanceof GeminiNativeProvider || provider instanceof OpenAiCompatibleProvider) {
+    if (
+      provider instanceof AgentRouterProvider ||
+      provider instanceof GeminiNativeProvider ||
+      provider instanceof OpenAiCompatibleProvider ||
+      provider instanceof OpenRouterProvider
+    ) {
       try {
         const text = await this.queryProvider(provider, systemPrompt, userPrompt);
         if (text && text.trim().length > 0) {
@@ -139,15 +144,61 @@ Responda ESTRITAMENTE em formato JSON: {"category": "NomeDaCategoria", "tags": [
       if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
       const data = await res.json() as any;
       return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    } else if (provider instanceof OpenAiCompatibleProvider) {
-      const res = await fetch((provider as any).config.url, {
+    } else if (provider instanceof AgentRouterProvider) {
+      const endpoint = `${provider.baseUrl}/chat/completions`;
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${(provider as any).config.apiKey}`,
+          Authorization: `Bearer ${provider.apiKey.trim()}`,
+          'HTTP-Referer': 'http://localhost:3001',
+          'X-Title': 'AI Question Assistant',
         },
         body: JSON.stringify({
-          model: (provider as any).config.model,
+          model: provider.model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.3,
+          max_tokens: 2048,
+        }),
+      });
+      if (!res.ok) throw new Error(`AgentRouter HTTP ${res.status}`);
+      const data = await res.json() as any;
+      return data.choices?.[0]?.message?.content || '';
+    } else if (provider instanceof OpenRouterProvider) {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${provider.apiKey}`,
+          'HTTP-Referer': 'http://localhost:3001',
+          'X-Title': 'AI Question Assistant',
+        },
+        body: JSON.stringify({
+          model: provider.model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.3,
+          max_tokens: 2048,
+        }),
+      });
+      if (!res.ok) throw new Error(`OpenRouter HTTP ${res.status}`);
+      const data = await res.json() as any;
+      return data.choices?.[0]?.message?.content || '';
+    } else if (provider instanceof OpenAiCompatibleProvider) {
+      const cfg = (provider as any).cfg || (provider as any).config;
+      const res = await fetch(cfg.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${cfg.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: cfg.model,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },

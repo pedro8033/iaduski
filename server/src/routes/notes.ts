@@ -50,6 +50,41 @@ const noteAiActionSchema = z.object({
   language: z.string().optional(),
 });
 
+import type { NoteTemplate } from '../types/notes';
+
+export const DEFAULT_NOTE_TEMPLATES: NoteTemplate[] = [
+  {
+    id: 'default_blank',
+    name: 'Bloco Padrão (Livre)',
+    description: 'Modelo clássico de anotações livres em branco com suporte a Markdown',
+    title: '',
+    content: '',
+    color: '#2e80ea',
+    tags: [],
+  },
+  {
+    id: 'surgical_terminology_table',
+    name: 'Tabela: Segundo elemento & Significado',
+    description: 'Modelo de terminologia cirúrgica e médica com prefixos/sufixos e significados',
+    title: 'Segundo Elemento e Significado',
+    content: `| Segundo elemento | Significado |
+| :--- | :--- |
+| **-algia/algo** | Dor |
+| **-cele** | Tumor; hérnia |
+| **-centese** | Punção; orifício |
+| **-ectomia** | Remoção parcial ou total |
+| **-oma** | Tumor |
+| **-pexia** | Fixação de um órgão |
+| **-plastia** | Reconstituição de uma parte do corpo |
+| **-rafia** | Sutura |
+| **-scopia** | Ato de ver; observar |
+| **-stomia** | Comunicação entre dois órgãos ocos ou entre um órgão e a pele |
+| **-tomia** | Corte ; abertura |`,
+    color: '#c84b15',
+    tags: ['terminologia', 'cirurgia', 'sufixos'],
+  },
+];
+
 export function createNotesRouter(repo: NotesRepository, aiService: NotesAiService): Router {
   const router = Router();
 
@@ -57,6 +92,14 @@ export function createNotesRouter(repo: NotesRepository, aiService: NotesAiServi
   const getUserId = (req: any): string | undefined => {
     return (req.headers['x-user-id'] as string) || (req.query.userId as string) || undefined;
   };
+
+  // 0. Obter modelos / templates disponíveis
+  router.get('/templates', (_req, res) => {
+    res.json({
+      success: true,
+      templates: DEFAULT_NOTE_TEMPLATES,
+    });
+  });
 
   // 1. Listar notas com filtros e pesquisa
   router.get('/', (req, res) => {

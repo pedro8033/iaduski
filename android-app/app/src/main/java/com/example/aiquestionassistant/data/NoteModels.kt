@@ -8,7 +8,8 @@ enum class NoteColor(val hex: String, val label: String) {
     LEMON("#eeff00", "Amarelo-limão"),
     GREEN("#82ff80", "Verde-claro"),
     GOLD("#ffd91a", "Amarelo-ouro"),
-    GRAY("#bdbdbd", "Cinzento");
+    GRAY("#bdbdbd", "Cinzento"),
+    TERRACOTTA("#c84b15", "Terracota");
 
     companion object {
         fun fromString(name: String?): NoteColor {
@@ -87,3 +88,55 @@ enum class NoteAiAction(val id: String, val label: String, val description: Stri
     SUGGEST_TAXONOMY("suggest_taxonomy", "Sugerir categorias/tags", "Recomendar organização relevante"),
     ILLUSTRATION("illustration", "Gerar ilustração", "Criar arte ou imagem com IA")
 }
+
+@Serializable
+data class NoteTemplate(
+    val id: String,
+    val name: String,
+    val description: String,
+    val title: String,
+    val content: String,
+    val color: String = "#2e80ea",
+    val tags: List<String> = emptyList()
+)
+
+object NoteTemplates {
+    // Modelo atual (em branco/livre) mantido intacto
+    val BLANK = NoteTemplate(
+        id = "default_blank",
+        name = "Bloco Padrão (Livre)",
+        description = "Modelo clássico de anotações livres em branco com suporte a Markdown",
+        title = "",
+        content = "",
+        color = "#2e80ea",
+        tags = emptyList()
+    )
+
+    // Novo modelo anexado pelo usuário: Terminologia Cirúrgica / Médica (Segundo elemento e Significado)
+    val SURGICAL_TERMINOLOGY = NoteTemplate(
+        id = "surgical_terminology_table",
+        name = "Tabela: Segundo elemento & Significado",
+        description = "Modelo de terminologia cirúrgica e médica com prefixos/sufixos e significados",
+        title = "Segundo Elemento e Significado",
+        content = """
+| Segundo elemento | Significado |
+| :--- | :--- |
+| **-algia/algo** | Dor |
+| **-cele** | Tumor; hérnia |
+| **-centese** | Punção; orifício |
+| **-ectomia** | Remoção parcial ou total |
+| **-oma** | Tumor |
+| **-pexia** | Fixação de um órgão |
+| **-plastia** | Reconstituição de uma parte do corpo |
+| **-rafia** | Sutura |
+| **-scopia** | Ato de ver; observar |
+| **-stomia** | Comunicação entre dois órgãos ocos ou entre um órgão e a pele |
+| **-tomia** | Corte ; abertura |
+        """.trimIndent(),
+        color = "#c84b15",
+        tags = listOf("terminologia", "cirurgia", "sufixos")
+    )
+
+    val ALL = listOf(BLANK, SURGICAL_TERMINOLOGY)
+}
+

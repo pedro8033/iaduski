@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -93,6 +94,8 @@ import com.example.aiquestionassistant.data.NoteAiAction
 import com.example.aiquestionassistant.data.NoteCategory
 import com.example.aiquestionassistant.data.NoteColor
 import com.example.aiquestionassistant.data.NoteTag
+import com.example.aiquestionassistant.data.NoteTemplate
+import com.example.aiquestionassistant.data.NoteTemplates
 import com.example.aiquestionassistant.data.NotesLocalRepository
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -128,6 +131,7 @@ fun NotesScreen(
     var showSortMenu by remember { mutableStateOf(false) }
 
     // Diálogos e Sheets
+    var showTemplatesSheet by remember { mutableStateOf(false) }
     var showManageTaxonomySheet by remember { mutableStateOf(false) }
     var showCreateWithAiDialog by remember { mutableStateOf(false) }
     var aiTopicInput by remember { mutableStateOf("") }
@@ -219,33 +223,44 @@ fun NotesScreen(
                 }
             }
 
-            // 2. BOTÕES PRINCIPAIS: "+ Nova nota" e "Criar com IA"
+            // 2. BOTÕES PRINCIPAIS: "+ Nova nota", "Modelos" e "Criar com IA"
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
                     onClick = { onOpenNote(null) },
-                    modifier = Modifier.weight(1f).height(44.dp),
+                    modifier = Modifier.weight(1.2f).height(44.dp),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("+ Nova nota", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("+ Nova nota", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                }
+
+                Button(
+                    onClick = { showTemplatesSheet = true },
+                    modifier = Modifier.weight(1.1f).height(44.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC84B15))
+                ) {
+                    Icon(Icons.Default.Category, contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Modelos", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 }
 
                 Button(
                     onClick = { showCreateWithAiDialog = true },
-                    modifier = Modifier.weight(1f).height(44.dp),
+                    modifier = Modifier.weight(1.1f).height(44.dp),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF212124))
                 ) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Criar com IA", color = Color(0xFF38BDF8), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(17.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Criar com IA", color = Color(0xFF38BDF8), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 }
             }
 
@@ -489,6 +504,110 @@ fun NotesScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // MODAL BOTTOM SHEET: MODELOS DE BLOCO DE NOTAS
+    if (showTemplatesSheet) {
+        val templates = repo.getTemplates()
+        ModalBottomSheet(
+            onDismissRequest = { showTemplatesSheet = false },
+            containerColor = Color(0xFF181A20)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = "Modelos de Bloco de Notas",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Escolha um modelo para criar uma nova anotação:",
+                    color = Color.LightGray,
+                    fontSize = 13.sp
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+
+                templates.forEach { tmpl ->
+                    val isTerracotta = tmpl.color.equals("#c84b15", ignoreCase = true)
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 5.dp)
+                            .clickable {
+                                showTemplatesSheet = false
+                                val created = repo.createNoteFromTemplate(tmpl.id)
+                                refreshData()
+                                onOpenNote(created.id)
+                            },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isTerracotta) Color(0xFF261915) else Color(0xFF1E2026)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = 1.dp,
+                            color = if (isTerracotta) Color(0xFFC84B15).copy(alpha = 0.7f) else Color(0xFF2F333D)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        if (isTerracotta) Color(0xFFC84B15) else Color(0xFF2563EB)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (isTerracotta) Icons.Default.Category else Icons.Default.Description,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = tmpl.name,
+                                        color = Color.White,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    if (isTerracotta) {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(Color(0xFFC84B15))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("Novo", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = tmpl.description,
+                                    color = Color.LightGray,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }

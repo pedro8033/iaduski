@@ -20,7 +20,7 @@ export interface AiModelInfo {
 }
 
 export interface AiSettingsData {
-  provider: 'gemini' | 'openrouter' | 'typesafe' | 'mock';
+  provider: 'gemini' | 'openrouter' | 'agentrouter' | 'typesafe' | 'mock';
   gemini: {
     hasKey: boolean;
     maskedKey: string;
@@ -30,6 +30,12 @@ export interface AiSettingsData {
     hasKey: boolean;
     maskedKey: string;
     model: string;
+  };
+  agentrouter: {
+    hasKey: boolean;
+    maskedKey: string;
+    model: string;
+    baseUrl: string;
   };
   voiceMode: 'realtime' | 'dictation';
 }
@@ -60,7 +66,9 @@ export class AiConfigService {
   getSettings(): AiSettingsData {
     const rawProvider = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
     const provider: AiSettingsData['provider'] =
-      rawProvider === 'openrouter'
+      rawProvider === 'agentrouter'
+        ? 'agentrouter'
+        : rawProvider === 'openrouter'
         ? 'openrouter'
         : rawProvider === 'typesafe' || rawProvider === 'jev'
         ? 'typesafe'
@@ -70,18 +78,25 @@ export class AiConfigService {
 
     const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
     const openrouterKey = (process.env.OPENROUTER_API_KEY || '').trim();
+    const agentrouterKey = (process.env.AGENTROUTER_API_KEY || '').trim();
 
     return {
       provider,
       gemini: {
         hasKey: geminiKey.length > 10,
         maskedKey: maskKey(geminiKey),
-        model: process.env.GEMINI_MODEL || process.env.AI_MODEL || 'gemini-2.0-flash',
+        model: process.env.GEMINI_MODEL || process.env.AI_MODEL || 'gemini-3.5-flash-lite',
       },
       openrouter: {
         hasKey: openrouterKey.length > 10,
         maskedKey: maskKey(openrouterKey),
         model: process.env.OPENROUTER_MODEL || 'deepseek/deepseek-r1:free',
+      },
+      agentrouter: {
+        hasKey: agentrouterKey.length > 5,
+        maskedKey: maskKey(agentrouterKey),
+        model: process.env.AGENTROUTER_MODEL || 'claude-opus-4-8',
+        baseUrl: process.env.AGENTROUTER_BASE_URL || 'https://agentrouter.org/v1',
       },
       voiceMode: (process.env.VOICE_MODE as 'realtime' | 'dictation') || 'realtime',
     };
@@ -95,12 +110,16 @@ export class AiConfigService {
     openrouterApiKey?: string;
     openrouterModel?: string;
     removeOpenRouterKey?: boolean;
+    agentrouterApiKey?: string;
+    agentrouterModel?: string;
+    agentrouterBaseUrl?: string;
+    removeAgentRouterKey?: boolean;
     voiceMode?: 'realtime' | 'dictation';
   }): AiSettingsData {
     // 1. Atualizar process.env
     if (update.provider) {
       const p = update.provider.toLowerCase();
-      if (['gemini', 'openrouter', 'typesafe', 'mock'].includes(p)) {
+      if (['gemini', 'openrouter', 'agentrouter', 'typesafe', 'mock'].includes(p)) {
         process.env.AI_PROVIDER = p;
       }
     }
@@ -125,6 +144,21 @@ export class AiConfigService {
       process.env.OPENROUTER_MODEL = update.openrouterModel.trim();
     }
 
+    if (update.removeAgentRouterKey) {
+      delete process.env.AGENTROUTER_API_KEY;
+    } else if (update.agentrouterApiKey && update.agentrouterApiKey.trim().length > 0) {
+      process.env.AGENTROUTER_API_KEY = update.agentrouterApiKey.trim();
+    }
+
+    if (update.agentrouterModel) {
+      const cleanModel = update.agentrouterModel.trim() === 'laude-opus-4-8' ? 'claude-opus-4-8' : update.agentrouterModel.trim();
+      process.env.AGENTROUTER_MODEL = cleanModel;
+    }
+
+    if (update.agentrouterBaseUrl) {
+      process.env.AGENTROUTER_BASE_URL = update.agentrouterBaseUrl.trim();
+    }
+
     if (update.voiceMode) {
       process.env.VOICE_MODE = update.voiceMode;
     }
@@ -136,6 +170,9 @@ export class AiConfigService {
       GEMINI_MODEL: process.env.GEMINI_MODEL,
       OPENROUTER_API_KEY: update.removeOpenRouterKey ? '' : process.env.OPENROUTER_API_KEY,
       OPENROUTER_MODEL: process.env.OPENROUTER_MODEL,
+      AGENTROUTER_API_KEY: update.removeAgentRouterKey ? '' : process.env.AGENTROUTER_API_KEY,
+      AGENTROUTER_MODEL: process.env.AGENTROUTER_MODEL,
+      AGENTROUTER_BASE_URL: process.env.AGENTROUTER_BASE_URL,
       VOICE_MODE: process.env.VOICE_MODE,
     });
 
@@ -170,10 +207,18 @@ export class AiConfigService {
   }
 
   async validateKey(
-    provider: 'gemini' | 'openrouter',
+    provider: 'gemini' | 'openrouter' | 'agentrouter',
     apiKey?: string,
   ): Promise<{ ok: boolean; message: string; details?: unknown }> {
-    const keyToTest = (apiKey || (provider === 'gemini' ? process.env.GEMINI_API_KEY : process.env.OPENROUTER_API_KEY) || '').trim();
+    const keyToTest = (
+      apiKey ||
+      (provider === 'gemini'
+        ? process.env.GEMINI_API_KEY
+        : provider === 'agentrouter'
+        ? process.env.AGENTROUTER_API_KEY
+        : process.env.OPENROUTER_API_KEY) ||
+      ''
+    ).trim();
 
     if (!keyToTest) {
       return { ok: false, message: 'Nenhuma chave fornecida para validação.' };
@@ -238,7 +283,143 @@ export class AiConfigService {
       }
     }
 
+    if (provider === 'agentrouter') {
+      const baseUrl = (process.env.AGENTROUTER_BASE_URL || 'https://agentrouter.org/v1').replace(/\/+$/, '');
+      try {
+        const res = await fetch(`${baseUrl}/models`, {
+          headers: {
+            Authorization: `Bearer ${keyToTest}`,
+          },
+          signal: AbortSignal.timeout(8000),
+        });
+
+        if (res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { data?: unknown[] };
+          const count = Array.isArray(body.data) ? body.data.length : 'Modelos ativos';
+          return {
+            ok: true,
+            message: `Ligação com AgentRouter estabelecida com sucesso! (${count} modelos disponíveis)`,
+            details: body,
+          };
+        }
+
+        if (res.status === 401 || res.status === 403) {
+          return { ok: false, message: 'Chave AgentRouter rejeitada (não autorizada - HTTP 401/403).' };
+        }
+
+        // Teste de fallback no endpoint /chat/completions se /models não estiver disponível
+        const testRes = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${keyToTest}`,
+          },
+          body: JSON.stringify({
+            model: 'claude-opus-4-8',
+            max_tokens: 1,
+            messages: [{ role: 'user', content: 'ping' }],
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+
+        if (testRes.ok || testRes.status === 400 || testRes.status === 429) {
+          return {
+            ok: true,
+            message: 'Ligação com AgentRouter autenticada com sucesso!',
+          };
+        }
+
+        const errText = await testRes.text().catch(() => '');
+        return {
+          ok: false,
+          message: `AgentRouter retornou HTTP ${testRes.status}: ${errText}`,
+        };
+      } catch (err) {
+        return { ok: false, message: `Erro de rede ao validar AgentRouter: ${(err as Error).message}` };
+      }
+    }
+
     return { ok: false, message: 'Fornecedor desconhecido.' };
+  }
+
+  async getAgentRouterModels(apiKey?: string): Promise<AiModelInfo[]> {
+    const curatedModels: AiModelInfo[] = [
+      {
+        id: 'claude-opus-4-8',
+        name: 'Claude Opus 4.8 (Raciocínio Extremo & Análise Avançada)',
+        description: 'Modelo Anthropic Opus de altíssima capacidade para raciocínio complexo, síntese e análise profunda.',
+        isFree: false,
+        pricing: { info: 'Pago via AgentRouter' },
+        contextLength: 200000,
+        capabilities: { text: true, image: true, audio: false },
+      },
+      {
+        id: 'claude-opus-5',
+        name: 'Claude Opus 5 (Nova Geração Anthropic)',
+        description: 'Nova geração topo de linha Anthropic Opus para máxima precisão lógica e raciocínio sutil.',
+        isFree: false,
+        pricing: { info: 'Pago via AgentRouter' },
+        contextLength: 250000,
+        capabilities: { text: true, image: true, audio: false },
+      },
+      {
+        id: 'deepseek-v4-flash',
+        name: 'DeepSeek V4 Flash (Ultrarrápido & Menor Latência)',
+        description: 'Modelo DeepSeek de ultra-baixa latência com raciocínio ágil e alta precisão para respostas em tempo real.',
+        isFree: false,
+        pricing: { info: 'Econômico via AgentRouter' },
+        contextLength: 128000,
+        capabilities: { text: true, image: true, audio: false },
+      },
+      {
+        id: 'gpt-6-astra',
+        name: 'GPT-6 Astra (Multimodal & Raciocínio Profundo OpenAI)',
+        description: 'Modelo de raciocínio de próxima geração com multimodalidade completa e alta densidade de conhecimento.',
+        isFree: false,
+        pricing: { info: 'Pago via AgentRouter' },
+        contextLength: 256000,
+        capabilities: { text: true, image: true, audio: false },
+      },
+    ];
+
+    const key = (apiKey || process.env.AGENTROUTER_API_KEY || '').trim();
+    const baseUrl = (process.env.AGENTROUTER_BASE_URL || 'https://agentrouter.org/v1').replace(/\/+$/, '');
+
+    if (!key) {
+      return curatedModels;
+    }
+
+    try {
+      const res = await fetch(`${baseUrl}/models`, {
+        headers: { Authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(6000),
+      });
+
+      if (res.ok) {
+        const body = (await res.json()) as { data?: Array<{ id: string; name?: string; description?: string }> };
+        if (Array.isArray(body.data) && body.data.length > 0) {
+          const list = [...curatedModels];
+          for (const m of body.data) {
+            if (!list.some((existing) => existing.id === m.id)) {
+              list.push({
+                id: m.id,
+                name: m.name || m.id,
+                description: m.description || `Modelo AgentRouter (${m.id})`,
+                isFree: false,
+                pricing: { info: 'Via AgentRouter' },
+                contextLength: 128000,
+                capabilities: { text: true, image: true, audio: false },
+              });
+            }
+          }
+          return list;
+        }
+      }
+    } catch {
+      // Fallback para os modelos curados
+    }
+
+    return curatedModels;
   }
 
   async getGeminiModels(apiKey?: string): Promise<AiModelInfo[]> {
@@ -247,39 +428,39 @@ export class AiConfigService {
     // Modelos curados oficiais com metadados reais do Google Gemini
     const curatedGeminiModels: AiModelInfo[] = [
       {
-        id: 'gemini-2.0-flash',
-        name: 'Gemini 2.0 Flash (Mais Recente & Ultrarrápido)',
-        description: 'Modelo topo de linha mais rápido e moderno do Google, multimodal e gratuito no AI Studio.',
+        id: 'gemini-3.5-flash-lite',
+        name: 'Gemini 3.5 Flash Lite (Ultrarrápido & Menor Latência)',
+        description: 'Modelo topo de linha mais veloz do Google AI Studio para respostas instantâneas.',
         isFree: true,
         pricing: { info: 'Gratuito no tier Google AI Studio (15 RPM)' },
         contextLength: 1048576,
         capabilities: { text: true, image: true, audio: true },
       },
       {
-        id: 'gemini-2.0-flash-lite-preview-02-05',
-        name: 'Gemini 2.0 Flash Lite (Leve & Econômico)',
-        description: 'Excelente para respostas instantâneas de texto com baixíssima latência.',
-        isFree: true,
-        pricing: { info: 'Gratuito no tier Google AI Studio' },
-        contextLength: 1048576,
-        capabilities: { text: true, image: true, audio: false },
-      },
-      {
-        id: 'gemini-1.5-flash',
-        name: 'Gemini 1.5 Flash (Estável & Equilibrado)',
-        description: 'Modelo veloz de uso geral para tarefas cotidianas, resumos e código.',
+        id: 'gemini-3.8-flash',
+        name: 'Gemini 3.8 Flash (Recomendado & Multimodal)',
+        description: 'Modelo mais recente com alta precisão e raciocínio multimodal rápido.',
         isFree: true,
         pricing: { info: 'Gratuito no tier Google AI Studio' },
         contextLength: 1048576,
         capabilities: { text: true, image: true, audio: true },
       },
       {
-        id: 'gemini-1.5-pro',
-        name: 'Gemini 1.5 Pro (Raciocínio Complexo)',
-        description: 'Modelo de raciocínio profundo com contexto gigante de 2M tokens.',
+        id: 'gemini-3.5-flash',
+        name: 'Gemini 3.5 Flash (Equilibrado & Rápido)',
+        description: 'Excelente para tarefas analíticas e visuais equilibradas com velocidade.',
         isFree: true,
-        pricing: { info: 'Gratuito (2 RPM) / Pago por token em Pay-as-you-go' },
-        contextLength: 2097152,
+        pricing: { info: 'Gratuito no tier Google AI Studio' },
+        contextLength: 1048576,
+        capabilities: { text: true, image: true, audio: true },
+      },
+      {
+        id: 'gemini-flash-latest',
+        name: 'Gemini Flash Latest (Versão Sempre Atualizada)',
+        description: 'Aponta automaticamente para a versão de produção mais recente do Gemini Flash.',
+        isFree: true,
+        pricing: { info: 'Gratuito no tier Google AI Studio' },
+        contextLength: 1048576,
         capabilities: { text: true, image: true, audio: true },
       },
     ];

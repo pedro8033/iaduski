@@ -5,7 +5,7 @@ import type {
   ImageGenerationRequest,
   ImageGenerationResponse,
 } from '../types/assistant';
-import { GeminiNativeProvider, MockProvider, OpenAiCompatibleProvider, OpenRouterProvider, sanitizeGeminiModel, type DecisionProvider } from './ai';
+import { AgentRouterProvider, GeminiNativeProvider, MockProvider, OpenAiCompatibleProvider, OpenRouterProvider, sanitizeGeminiModel, type DecisionProvider } from './ai';
 
 export class AssistantService {
   constructor(private readonly getProvider: () => DecisionProvider) {}
@@ -83,8 +83,13 @@ export class AssistantService {
 
     let lastError: string | null = null;
 
-    // 1. Tenta o provedor configurado (OpenRouter, Gemini nativo ou OpenAI-compatible)
-    if (provider instanceof OpenRouterProvider || provider instanceof GeminiNativeProvider || provider instanceof OpenAiCompatibleProvider) {
+    // 1. Tenta o provedor configurado (AgentRouter, OpenRouter, Gemini nativo ou OpenAI-compatible)
+    if (
+      provider instanceof AgentRouterProvider ||
+      provider instanceof OpenRouterProvider ||
+      provider instanceof GeminiNativeProvider ||
+      provider instanceof OpenAiCompatibleProvider
+    ) {
       try {
         const textResponse = await this.queryAi(provider, systemPrompt, userPrompt, req.image);
         if (textResponse && textResponse.trim().length > 0) {
@@ -256,6 +261,180 @@ Se o usuário forneceu um texto, documento ou imagem específica, use-o como con
     return p;
   }
 
+  /**
+   * Checks if the current provider supports streaming.
+   */
+  canStream(): boolean {
+    const provider = this.getProvider();
+    return provider instanceof GeminiNativeProvider;
+  }
+
+  /**
+   * Streaming version of executeAction.
+   * Yields text chunks as they arrive from the API.
+   * At the end, yields a final JSON metadata object prefixed with \0.
+   */
+  async *executeActionStream(req: AssistantRequest): AsyncGenerator<string> {
+    const startTime = Date.now();
+    const provider = this.getProvider();
+
+    // Image requests and non-Gemini providers fall back to non-streaming
+    const fullText = `${req.prompt || ''} ${req.content || ''}`.trim();
+    const isImage = req.action === 'image' || this.isImageIntent(req.prompt, req.content);
+    if (isImage || !(provider instanceof GeminiNativeProvider)) {
+      const result = await this.executeAction(req);
+      yield result.resultText || '';
+      yield `\0${JSON.stringify({
+        action: result.action,
+        title: result.title,
+        diagramCode: result.diagramCode,
+        imageUrl: result.imageUrl,
+        keyPoints: result.keyPoints,
+        provider: result.provider,
+        latencyMs: result.latencyMs,
+      })}`;
+      return;
+    }
+
+    // Mock provider — not streamable
+    if (provider instanceof MockProvider || (provider.name as string) === 'mock') {
+      const result = await this.executeAction(req);
+      yield result.resultText || '';
+      yield `\0${JSON.stringify({
+        action: result.action,
+        title: result.title,
+        provider: result.provider,
+        latencyMs: result.latencyMs,
+      })}`;
+      return;
+    }
+
+    const systemPrompt = this.buildSystemPrompt(req.action, req.options);
+    const userPrompt = this.buildUserPrompt(req);
+
+    let fullResponse = '';
+    try {
+      for await (const chunk of this.streamQueryGemini(provider, systemPrompt, userPrompt, req.image)) {
+        fullResponse += chunk;
+        yield chunk;
+      }
+    } catch (err) {
+      console.warn('[assistantService] Stream falhou, tentando não-streaming:', (err as Error).message);
+      // Fallback to non-streaming
+      const result = await this.executeAction(req);
+      if (!fullResponse) {
+        yield result.resultText || '';
+      }
+      yield `\0${JSON.stringify({
+        action: result.action,
+        title: result.title,
+        diagramCode: result.diagramCode,
+        imageUrl: result.imageUrl,
+        keyPoints: result.keyPoints,
+        provider: result.provider,
+        latencyMs: result.latencyMs,
+      })}`;
+      return;
+    }
+
+    // Parse the full response for metadata
+    const parsed = this.parseResponse(req.action, fullResponse);
+    yield `\0${JSON.stringify({
+      action: req.action,
+      title: parsed.title,
+      diagramCode: parsed.diagramCode,
+      keyPoints: parsed.keyPoints,
+      provider: provider.name,
+      latencyMs: Date.now() - startTime,
+    })}`;
+  }
+
+  /**
+   * Streams text from Gemini's streamGenerateContent endpoint.
+   * Yields text chunks as they arrive.
+   */
+  private async *streamQueryGemini(
+    provider: GeminiNativeProvider,
+    systemPrompt: string,
+    userPrompt: string,
+    image?: string,
+  ): AsyncGenerator<string> {
+    const apiKey = provider.apiKey;
+    const modelName = sanitizeGeminiModel(provider.model || 'gemini-3.5-flash-lite');
+
+    const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
+    if (image) {
+      let mimeType = 'image/jpeg';
+      let data = image;
+      const match = image.match(/^data:(image\/[a-zA-Z0-9.+_-]+);base64,(.+)$/s);
+      if (match) {
+        mimeType = match[1];
+        data = match[2];
+      } else if (image.startsWith('data:')) {
+        data = image.substring(image.indexOf(',') + 1);
+      }
+      parts.push({ inlineData: { mimeType, data } });
+    }
+    parts.push({ text: `${systemPrompt}\n\n${userPrompt}` });
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?alt=sse&key=${apiKey}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({ contents: [{ parts }] }),
+      signal: AbortSignal.timeout(60_000),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`Gemini stream (${modelName}) HTTP ${res.status}: ${errText}`);
+    }
+
+    if (!res.body) {
+      throw new Error('Gemini stream: response body is null');
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse SSE events from buffer
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim();
+            if (!jsonStr || jsonStr === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(jsonStr) as {
+                candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+              };
+              const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (text) {
+                yield text;
+              }
+            } catch {
+              // Skip malformed JSON lines
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
   private async queryAi(
     provider: DecisionProvider,
     systemPrompt: string,
@@ -264,10 +443,7 @@ Se o usuário forneceu um texto, documento ou imagem específica, use-o como con
   ): Promise<string> {
     if (provider instanceof GeminiNativeProvider) {
       const apiKey = provider.apiKey;
-      const baseModel = sanitizeGeminiModel(provider.model || 'gemini-flash-latest');
-      const modelsToTry = [baseModel];
-      if (!modelsToTry.includes('gemini-3.5-flash')) modelsToTry.push('gemini-3.5-flash');
-      if (!modelsToTry.includes('gemini-flash-latest')) modelsToTry.push('gemini-flash-latest');
+      const modelName = sanitizeGeminiModel(provider.model || 'gemini-3.5-flash-lite');
 
       const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
       if (image) {
@@ -284,36 +460,33 @@ Se o usuário forneceu um texto, documento ou imagem específica, use-o como con
       }
       parts.push({ text: `${systemPrompt}\n\n${userPrompt}` });
 
-      let lastGeminiError: string | null = null;
-      for (const m of modelsToTry) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
-        try {
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': apiKey,
-            },
-            body: JSON.stringify({ contents: [{ parts }] }),
-          });
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: JSON.stringify({ contents: [{ parts }] }),
+          signal: AbortSignal.timeout(15_000),
+        });
 
-          if (!res.ok) {
-            const errText = await res.text().catch(() => '');
-            lastGeminiError = `HTTP ${res.status}: ${errText}`;
-            continue;
-          }
-          const data = (await res.json()) as {
-            candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-          };
-          const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-          if (text.trim().length > 0) {
-            return text;
-          }
-        } catch (e) {
-          lastGeminiError = (e as Error).message;
+        if (!res.ok) {
+          const errText = await res.text().catch(() => '');
+          throw new Error(`Gemini (${modelName}) HTTP ${res.status}: ${errText}`);
         }
+        const data = (await res.json()) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        };
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+        if (text.trim().length > 0) {
+          return text;
+        }
+        throw new Error(`Gemini (${modelName}): resposta vazia`);
+      } catch (e) {
+        throw new Error(`Google Gemini (${modelName}): ${(e as Error).message}`);
       }
-      throw new Error(`Google Gemini (${modelsToTry.join(', ')}): ${lastGeminiError}`);
     }
 
     if (provider instanceof OpenAiCompatibleProvider) {
@@ -389,6 +562,49 @@ Se o usuário forneceu um texto, documento ou imagem específica, use-o como con
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
         throw new Error(`OpenRouter (${provider.model}) retornou HTTP ${res.status}: ${errText}`);
+      }
+      const data = (await res.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      return data.choices?.[0]?.message?.content ?? '';
+    }
+
+    if (provider instanceof AgentRouterProvider) {
+      let userContent: unknown = userPrompt;
+      if (image) {
+        const imageUrl = image.startsWith('data:') ? image : `data:image/png;base64,${image}`;
+        userContent = [
+          { type: 'image_url', image_url: { url: imageUrl } },
+          { type: 'text', text: userPrompt },
+        ];
+      }
+
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userContent },
+      ];
+
+      const endpoint = `${provider.baseUrl}/chat/completions`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${provider.apiKey.trim()}`,
+          'HTTP-Referer': 'http://localhost:3001',
+          'X-Title': 'AI Question Assistant',
+        },
+        body: JSON.stringify({
+          model: provider.model,
+          messages,
+          temperature: 0.3,
+          max_tokens: 2048,
+        }),
+        signal: AbortSignal.timeout(provider.timeoutMs),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`AgentRouter (${provider.model}) retornou HTTP ${res.status}: ${errText}`);
       }
       const data = (await res.json()) as {
         choices?: Array<{ message?: { content?: string } }>;

@@ -7,6 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+  <link rel="shortcut icon" href="favicon.ico">
   <link rel="stylesheet" href="styles.css">
   <!-- Markdown & Mermaid -->
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
@@ -300,6 +302,10 @@
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 <span>+ Nova nota</span>
               </button>
+              <button class="btn-template-note" id="btn-web-template-note" title="Modelos de Bloco de Notas">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><line x1="4" y1="9" x2="20" y2="9"/><line x1="10" y1="9" x2="10" y2="20"/></svg>
+                <span>Modelos</span>
+              </button>
               <button class="btn-ai-note" id="btn-web-ai-note">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
                 <span>Criar com IA</span>
@@ -409,6 +415,8 @@
               <button type="button" class="fmt-btn" data-cmd="bullet" title="Lista com marcadores">• Lista</button>
               <button type="button" class="fmt-btn" data-cmd="checklist" title="Checklist de Tarefas">☑ Tarefas</button>
               <button type="button" class="fmt-btn" data-cmd="code" title="Bloco de código">&lt;/&gt;</button>
+              <button type="button" class="fmt-btn fmt-btn-accent" data-cmd="template-table" title="Inserir Modelo Tabela (Segundo elemento)">📋 Tabela</button>
+              <button type="button" class="fmt-btn" id="btn-toggle-note-preview" title="Alternar Pré-visualização">👁 Ver</button>
               <div class="word-counter-stats" id="word-counter-stats">0 palavras • 0 carateres</div>
             </div>
 
@@ -416,6 +424,7 @@
             <div class="note-editor-body">
               <input type="text" id="editor-note-title" class="editor-title-input" placeholder="Título da nota" />
               <textarea id="editor-note-content" class="editor-content-textarea" placeholder="Comece a escrever a sua nota..."></textarea>
+              <div id="editor-note-preview" class="editor-content-preview markdown-content" style="display: none;"></div>
             </div>
           </div>
         </div>
@@ -548,6 +557,24 @@
           </div>
         </div>
 
+        <!-- MODAL DE MODELOS DE BLOCO DE NOTAS -->
+        <div class="modal-backdrop" id="modal-note-templates" style="display: none;">
+          <div class="modal-card" style="max-width: 580px;">
+            <div class="modal-header">
+              <h3>Modelos de Bloco de Notas</h3>
+              <button class="btn-close-modal" id="btn-close-templates-modal">✕</button>
+            </div>
+            <div class="modal-body">
+              <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1.25rem;">
+                Escolha um modelo de bloco de notas para criar a sua anotação:
+              </p>
+              <div class="templates-list-grid" id="templates-list-container">
+                <!-- Preenchido dinamicamente via JS -->
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- MODAL GESTÃO DE CATEGORIAS E ETIQUETAS -->
         <div class="modal-backdrop" id="modal-manage-taxonomies" style="display: none;">
           <div class="modal-card" style="max-width: 520px;">
@@ -642,6 +669,10 @@
               <button type="button" class="provider-select-card active" data-provider-choice="gemini" id="choice-provider-gemini">
                 <span class="provider-card-name">Google Gemini</span>
                 <span class="provider-card-badge">Multimodal / Voz</span>
+              </button>
+              <button type="button" class="provider-select-card" data-provider-choice="agentrouter" id="choice-provider-agentrouter">
+                <span class="provider-card-name">AgentRouter</span>
+                <span class="provider-card-badge">Claude Opus / DeepSeek / GPT-6</span>
               </button>
               <button type="button" class="provider-select-card" data-provider-choice="openrouter" id="choice-provider-openrouter">
                 <span class="provider-card-name">OpenRouter</span>
@@ -775,6 +806,68 @@
                   <span id="openrouter-model-context">Contexto: 64k</span> • 
                   <span id="openrouter-model-caps">Modalidade: Texto</span>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ÁREA: AGENTROUTER -->
+          <div class="provider-config-box" id="box-agentrouter-config">
+            <div class="provider-config-header">
+              <div class="provider-info-left">
+                <div class="provider-logo-badge agentrouter-gradient">AR</div>
+                <div>
+                  <h4 class="provider-heading">AgentRouter (agentrouter.org)</h4>
+                  <p class="provider-sub">Gateway de alto desempenho com suporte aos modelos Claude Opus 4.8 / 5, DeepSeek V4 Flash e GPT-6 Astra.</p>
+                </div>
+              </div>
+              <div class="connection-status-pill" id="badge-status-agentrouter">
+                <span class="status-dot"></span>
+                <span class="status-text">A verificar...</span>
+              </div>
+            </div>
+
+            <div class="provider-fields">
+              <div class="form-row">
+                <label class="field-label">Chave API AgentRouter:</label>
+                <div class="input-with-actions">
+                  <input type="password" id="input-agentrouter-key" placeholder="Insira sua chave de API AgentRouter..." autocomplete="off">
+                  <button type="button" class="btn-icon-input" id="btn-toggle-show-agentrouter" title="Ver / Ocultar chave">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+                <div class="key-actions-row">
+                  <button type="button" class="btn-secondary-action" id="btn-test-agentrouter">Testar Ligação</button>
+                  <button type="button" class="btn-primary-action" id="btn-save-agentrouter">Guardar Chave</button>
+                  <button type="button" class="btn-danger-action" id="btn-remove-agentrouter">Remover</button>
+                  <a href="https://agentrouter.org/docs/index.html" target="_blank" class="external-key-link">Documentação Oficial ↗</a>
+                </div>
+                <div class="action-feedback-msg" id="feedback-agentrouter"></div>
+              </div>
+
+              <!-- Seleção Dinâmica de Modelo AgentRouter -->
+              <div class="form-row">
+                <div class="label-with-refresh">
+                  <label class="field-label">Modelo AgentRouter Selecionado:</label>
+                  <button type="button" class="btn-refresh-models" id="btn-refresh-agentrouter-models" title="Atualizar lista oficial">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    <span>Atualizar lista</span>
+                  </button>
+                </div>
+
+                <select class="settings-select" id="select-agentrouter-model">
+                  <option value="claude-opus-4-8">Claude Opus 4.8 (Raciocínio Extremo & Análise Avançada)</option>
+                  <option value="claude-opus-5">Claude Opus 5 (Nova Geração Anthropic)</option>
+                  <option value="deepseek-v4-flash">DeepSeek V4 Flash (Ultrarrápido & Menor Latência)</option>
+                  <option value="gpt-6-astra">GPT-6 Astra (Multimodal & Raciocínio Profundo OpenAI)</option>
+                </select>
+                <div class="model-info-banner" id="banner-agentrouter-model-info">
+                  <span id="agentrouter-model-desc">Claude Opus 4.8 • Modelo Anthropic Opus de altíssima capacidade para exames e raciocínio complexo.</span>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <label class="field-label">URL Base do Gateway (Padrão: https://agentrouter.org/v1):</label>
+                <input type="text" id="input-agentrouter-base-url" placeholder="https://agentrouter.org/v1" value="https://agentrouter.org/v1" class="settings-search-input">
               </div>
             </div>
           </div>

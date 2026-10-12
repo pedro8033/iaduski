@@ -59,15 +59,15 @@ export function createApp(opts: AppOptions) {
     res.json({
       ok: true,
       provider: s.provider,
-      available: ['gemini', 'openrouter', 'typesafe', 'mock'],
+      available: ['gemini', 'openrouter', 'agentrouter', 'typesafe', 'mock'],
     });
   });
 
   app.post('/api/provider', (req, res) => {
     const { provider } = (req.body ?? {}) as { provider?: string };
-    const valid = ['gemini', 'openrouter', 'mock', 'local', 'typesafe', 'typesafe-jev'];
+    const valid = ['gemini', 'openrouter', 'agentrouter', 'mock', 'local', 'typesafe', 'typesafe-jev'];
     if (!provider || !valid.includes(provider)) {
-      res.status(400).json({ error: 'Provedor inválido. Escolha "gemini", "openrouter", "mock" ou "typesafe".' });
+      res.status(400).json({ error: 'Provedor inválido. Escolha "gemini", "openrouter", "agentrouter", "mock" ou "typesafe".' });
       return;
     }
     const cleanName = provider === 'typesafe-jev' ? 'typesafe' : provider === 'local' ? 'mock' : provider;
@@ -96,6 +96,10 @@ export function createApp(opts: AppOptions) {
       openrouterApiKey: body.openrouterApiKey,
       openrouterModel: body.openrouterModel,
       removeOpenRouterKey: Boolean(body.removeOpenRouterKey),
+      agentrouterApiKey: body.agentrouterApiKey,
+      agentrouterModel: body.agentrouterModel,
+      agentrouterBaseUrl: body.agentrouterBaseUrl,
+      removeAgentRouterKey: Boolean(body.removeAgentRouterKey),
       voiceMode: body.voiceMode,
     });
 
@@ -112,8 +116,8 @@ export function createApp(opts: AppOptions) {
 
   app.post('/api/ai/validate-key', async (req, res) => {
     const { provider, apiKey } = req.body ?? {};
-    if (!provider || (provider !== 'gemini' && provider !== 'openrouter')) {
-      res.status(400).json({ ok: false, message: 'Fornecedor inválido. Escolha "gemini" ou "openrouter".' });
+    if (!provider || (provider !== 'gemini' && provider !== 'openrouter' && provider !== 'agentrouter')) {
+      res.status(400).json({ ok: false, message: 'Fornecedor inválido. Escolha "gemini", "openrouter" ou "agentrouter".' });
       return;
     }
     const result = await aiConfig.validateKey(provider, apiKey);
@@ -123,7 +127,10 @@ export function createApp(opts: AppOptions) {
   app.get('/api/ai/models', async (req, res) => {
     const provider = String(req.query.provider || 'gemini').toLowerCase();
     try {
-      if (provider === 'openrouter') {
+      if (provider === 'agentrouter') {
+        const models = await aiConfig.getAgentRouterModels();
+        res.json({ ok: true, provider: 'agentrouter', models });
+      } else if (provider === 'openrouter') {
         const models = await aiConfig.getOpenRouterModels();
         res.json({ ok: true, provider: 'openrouter', models });
       } else {

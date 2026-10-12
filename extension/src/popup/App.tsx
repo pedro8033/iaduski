@@ -20,6 +20,8 @@ const API_BASE = typeof __API_URL__ !== 'undefined' ? __API_URL__ : 'http://127.
 
 function formatProviderName(name?: string) {
   if (!name) return 'IA';
+  if (name.includes('agentrouter')) return 'AgentRouter';
+  if (name.includes('openrouter')) return 'OpenRouter';
   if (name.includes('typesafe') || name.includes('jev')) return 'TypeSafe Jev';
   if (name.includes('gemini')) return 'Google Gemini';
   if (name.includes('mock')) return 'Mock Local';
@@ -28,6 +30,8 @@ function formatProviderName(name?: string) {
 
 function formatProviderFullName(name?: string) {
   if (!name) return 'IA Desconhecida';
+  if (name.includes('agentrouter')) return 'AgentRouter (agentrouter.org)';
+  if (name.includes('openrouter')) return 'OpenRouter (Multi-modelos)';
   if (name.includes('typesafe') || name.includes('jev')) return 'TypeSafe Jev (System One)';
   if (name.includes('gemini')) return 'Google Gemini (3.5 Flash Lite)';
   if (name.includes('mock')) return 'Mock Provider (Teste)';
@@ -105,7 +109,7 @@ export default function App() {
     void checkServerAndProvider();
   }, []);
 
-  const switchProvider = async (target: 'typesafe' | 'gemini') => {
+  const switchProvider = async (target: string) => {
     setSwitchingProvider(true);
     setPopupError(null);
     try {

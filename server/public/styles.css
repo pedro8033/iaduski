@@ -2096,6 +2096,10 @@ body.chatgpt-body {
   background: linear-gradient(135deg, #047857, #0d9488, #0284c7);
 }
 
+.agentrouter-gradient {
+  background: linear-gradient(135deg, #7c3aed, #ec4899, #f97316);
+}
+
 .provider-heading {
   font-size: 0.95rem;
   font-weight: 600;
@@ -2755,4 +2759,195 @@ body.chatgpt-body {
   0%, 100% { transform: scale(1); box-shadow: 0 0 0 rgba(239, 68, 68, 0.4); }
   50% { transform: scale(1.1); box-shadow: 0 0 12px rgba(239, 68, 68, 0.8); }
 }
+
+/* ==========================================================================
+   MODELOS DE BLOCO DE NOTAS & TABELAS (NOVO MODELO DE TERMINOLOGIA)
+   ========================================================================== */
+.btn-template-note {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(200, 75, 21, 0.16);
+  color: #fb923c;
+  border: 1px solid rgba(200, 75, 21, 0.38);
+  padding: 0.5rem 0.95rem;
+  border-radius: 9px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-template-note:hover {
+  background: rgba(200, 75, 21, 0.28);
+  border-color: #ea580c;
+  color: #ffedd5;
+  transform: translateY(-1px);
+}
+
+.fmt-btn-accent {
+  background: rgba(200, 75, 21, 0.18) !important;
+  color: #fb923c !important;
+  border: 1px solid rgba(200, 75, 21, 0.4) !important;
+  font-weight: 600;
+}
+
+.fmt-btn-accent:hover {
+  background: rgba(200, 75, 21, 0.3) !important;
+  color: #ffedd5 !important;
+}
+
+.templates-list-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.template-card-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.template-card-item:hover {
+  background: #232328;
+  border-color: #3f3f46;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.template-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.template-icon-blank {
+  background: rgba(46, 128, 234, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.template-icon-table {
+  background: rgba(200, 75, 21, 0.22);
+  color: #f97316;
+  border: 1px solid rgba(200, 75, 21, 0.45);
+}
+
+.template-card-info {
+  flex: 1;
+}
+
+.template-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.28rem;
+}
+
+.template-card-name {
+  font-size: 0.96rem;
+  font-weight: 600;
+  color: #f4f4f5;
+}
+
+.badge-new-template {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: #c84b15;
+  color: #ffffff;
+  padding: 2px 7px;
+  border-radius: 5px;
+  letter-spacing: 0.5px;
+}
+
+.badge-default-template {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: #27272a;
+  color: #a1a1aa;
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+.template-card-desc {
+  font-size: 0.82rem;
+  color: #a1a1aa;
+  line-height: 1.42;
+  margin-bottom: 0.55rem;
+}
+
+.template-card-preview-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.73rem;
+  background: rgba(255, 255, 255, 0.05);
+  color: #d4d4d8;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Área de Pré-Visualização Formatada da Nota */
+.editor-content-preview {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0.25rem;
+  color: #e2e8f0;
+  font-size: 0.96rem;
+  line-height: 1.6;
+}
+
+/* Tabela Médica / Cirúrgica Idêntica à Imagem Anexada */
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.85rem 0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.markdown-content table th {
+  background-color: #c84b15 !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  font-size: 0.98rem;
+  padding: 0.8rem 1.15rem;
+  text-align: left;
+  border: 1px solid #c84b15;
+  letter-spacing: 0.01em;
+}
+
+.markdown-content table td {
+  background-color: #f7d7d2 !important;
+  color: #1a1a1a !important;
+  font-size: 0.9rem;
+  padding: 0.65rem 1.15rem;
+  border: 1px solid #e8b4ac;
+  vertical-align: middle;
+}
+
+.markdown-content table tr:nth-child(even) td {
+  background-color: #fde8e5 !important;
+}
+
+.markdown-content table td strong,
+.markdown-content table td b {
+  color: #991b1b !important;
+  font-weight: 700;
+}
+
 

@@ -13,9 +13,9 @@ import java.util.concurrent.TimeUnit
 
 class AiRepository {
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
         .build()
 
     fun isImageIntent(text: String): Boolean {
@@ -55,6 +55,12 @@ class AiRepository {
             // Se tiver Chave direta do Gemini configurada, executa no dispositivo
             if (settings.directGeminiKey.isNotBlank()) {
                 val direct = executeDirectGemini(settings, action, content, imageBase64, prompt, options)
+                if (direct.isSuccess) return@withContext direct
+            }
+
+            // Se tiver Chave direta do AgentRouter configurada, executa no dispositivo
+            if (settings.directAgentRouterKey.isNotBlank()) {
+                val direct = executeDirectAgentRouter(settings, action, content, imageBase64, prompt, options)
                 if (direct.isSuccess) return@withContext direct
             }
 
@@ -208,7 +214,10 @@ class AiRepository {
         prompt: String?,
         options: AssistantActionOptions
     ): AssistantResult {
-        val model = settings.model.ifBlank { "gemini-2.5-flash" }
+        val rawModel = settings.model.ifBlank { "gemini-3.5-flash-lite" }
+        val model = if (rawModel.contains("1.5") || rawModel.contains("2.0") || rawModel.contains("2.5") || rawModel.contains("3-pro-image")) {
+            "gemini-3.5-flash-lite"
+        } else rawModel
         val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=${settings.directGeminiKey.trim()}"
 
         val systemPrompt = buildDirectSystemPrompt(action, options)
@@ -367,6 +376,99 @@ class AiRepository {
             val text = choices?.optJSONObject(0)?.optJSONObject("message")?.optString("content").orEmpty()
             if (text.isBlank()) {
                 return AssistantResult(isSuccess = false, action = action, error = "Resposta do OpenRouter sem conteúdo")
+            }
+
+            val diagramCode = if (action == AssistantActionType.DIAGRAM) {
+                Regex("""```mermaid\s*([\s\S]*?)\s*```""").find(text)?.groupValues?.get(1)?.trim()
+            } else null
+
+            return AssistantResult(
+                isSuccess = true,
+                action = action,
+                title = action.label,
+                resultText = text,
+                diagramCode = diagramCode
+            )
+        }
+    }
+
+    private fun executeDirectAgentRouter(
+        settings: AppSettings,
+        action: AssistantActionType,
+        content: String?,
+        imageBase64: String?,
+        prompt: String?,
+        options: AssistantActionOptions
+    ): AssistantResult {
+        var rawModel = settings.model.ifBlank { "claude-opus-4-8" }
+        if (rawModel == "laude-opus-4-8") {
+            rawModel = "claude-opus-4-8"
+        }
+        val endpoint = "https://agentrouter.org/v1/chat/completions"
+
+        val systemPrompt = buildDirectSystemPrompt(action, options)
+        val fullUserPrompt = buildString {
+            if (!prompt.isNullOrBlank()) append("INSTRUÇÃO:\n").append(prompt).append("\n\n")
+            if (!content.isNullOrBlank()) append("CONTEÚDO:\n").append(content).append("\n\n")
+        }
+
+        val messagesArray = JSONArray().apply {
+            put(JSONObject().apply {
+                put("role", "system")
+                put("content", systemPrompt)
+            })
+            val userMsg = JSONObject().apply {
+                put("role", "user")
+                if (!imageBase64.isNullOrBlank()) {
+                    val formatted = if (imageBase64.startsWith("data:")) imageBase64 else "data:image/jpeg;base64,$imageBase64"
+                    val contentArr = JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("type", "image_url")
+                            put("image_url", JSONObject().put("url", formatted))
+                        })
+                        put(JSONObject().apply {
+                            put("type", "text")
+                            put("text", fullUserPrompt)
+                        })
+                    }
+                    put("content", contentArr)
+                } else {
+                    put("content", fullUserPrompt)
+                }
+            }
+            put(userMsg)
+        }
+
+        val requestJson = JSONObject().apply {
+            put("model", rawModel)
+            put("messages", messagesArray)
+            put("temperature", 0.2)
+        }
+
+        val requestBody = requestJson.toString().toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url(endpoint)
+            .addHeader("Authorization", "Bearer ${settings.directAgentRouterKey.trim()}")
+            .addHeader("HTTP-Referer", "http://localhost:3001")
+            .addHeader("X-Title", "AI Question Assistant")
+            .post(requestBody)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                return AssistantResult(
+                    isSuccess = false,
+                    action = action,
+                    error = "AgentRouter respondeu HTTP ${response.code}: $responseBody"
+                )
+            }
+
+            val json = JSONObject(responseBody)
+            val choices = json.optJSONArray("choices")
+            val text = choices?.optJSONObject(0)?.optJSONObject("message")?.optString("content").orEmpty()
+            if (text.isBlank()) {
+                return AssistantResult(isSuccess = false, action = action, error = "Resposta do AgentRouter sem conteúdo")
             }
 
             val diagramCode = if (action == AssistantActionType.DIAGRAM) {

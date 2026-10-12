@@ -243,6 +243,24 @@ class NotesLocalRepository(private val context: Context) {
         return saveNote(copy)
     }
 
+    // MODELOS / TEMPLATES DE NOTAS
+    fun getTemplates(): List<NoteTemplate> = NoteTemplates.ALL
+
+    @Synchronized
+    fun createNoteFromTemplate(templateId: String): Note {
+        val template = NoteTemplates.ALL.find { it.id == templateId } ?: NoteTemplates.BLANK
+        val newNote = Note(
+            id = java.util.UUID.randomUUID().toString(),
+            title = template.title,
+            content = template.content,
+            color = template.color,
+            tags = template.tags,
+            createdAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis()
+        )
+        return saveNote(newNote)
+    }
+
     // CATEGORIAS
     @Synchronized
     fun getCategories(): List<NoteCategory> {

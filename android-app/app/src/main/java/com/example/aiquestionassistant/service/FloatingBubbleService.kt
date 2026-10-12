@@ -196,7 +196,7 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
         return builder
             .setContentTitle("Assistente IA Global Ativo")
             .setContentText("Toque no botão flutuante para analisar ecrã, resumir ou explicar")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(com.example.aiquestionassistant.R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
             .build()
     }
@@ -224,11 +224,11 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
             background = bg
             elevation = 16f
 
-            // Ícone central vetorial com símbolo IA elegante
+            // Logotipo oficial do app no botão flutuante
             val icon = ImageView(context).apply {
-                setImageResource(android.R.drawable.ic_menu_search)
-                setColorFilter(Color.WHITE)
-                val pad = dpToPx(14)
+                setImageResource(com.example.aiquestionassistant.R.drawable.app_logo)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                val pad = dpToPx(3)
                 setPadding(pad, pad, pad, pad)
             }
             addView(icon, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))

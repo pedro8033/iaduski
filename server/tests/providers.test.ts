@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { GeminiNativeProvider, parseModelOutput, TypeSafeJevProvider } from '../src/services/ai';
+import { AgentRouterProvider, GeminiNativeProvider, parseModelOutput, TypeSafeJevProvider } from '../src/services/ai';
 
 describe('Providers AI: Gemini e TypeSafe Jev', () => {
   const sampleQuestion = {
@@ -76,6 +76,76 @@ describe('Providers AI: Gemini e TypeSafe Jev', () => {
     expect(res.confidence).toBe(0.98);
 
     vi.unstubAllGlobals();
+  });
+
+  it('AgentRouterProvider formata a chamada para agentrouter.org/v1/chat/completions com Bearer token e claude-opus-4-8', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: '{"answer": "B", "reasoning": "Lisboa é a capital constitucional de Portugal."}',
+            },
+          },
+        ],
+      }),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const provider = new AgentRouterProvider('sk-agentrouter-test', 'claude-opus-4-8');
+    const res = await provider.answer(sampleQuestion);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe('https://agentrouter.org/v1/chat/completions');
+    expect(options.method).toBe('POST');
+    expect(options.headers.Authorization).toBe('Bearer sk-agentrouter-test');
+
+    const body = JSON.parse(options.body as string);
+    expect(body.model).toBe('claude-opus-4-8');
+    expect(res.answer).toBe('B');
+    expect(res.reasoning).toContain('Lisboa');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('AgentRouterProvider normaliza laude-opus-4-8 para claude-opus-4-8 e aceita claude-opus-5, deepseek-v4-flash e gpt-6-astra', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: '{"answer": "A"}' } }],
+      }),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    // Teste com o typo enviado pelo usuário: laude-opus-4-8
+    const typoProvider = new AgentRouterProvider('sk-test', 'laude-opus-4-8');
+    expect(typoProvider.model).toBe('claude-opus-4-8');
+
+    // Teste com claude-opus-5
+    const opus5Provider = new AgentRouterProvider('sk-test', 'claude-opus-5');
+    expect(opus5Provider.model).toBe('claude-opus-5');
+
+    // Teste com deepseek-v4-flash
+    const deepseekProvider = new AgentRouterProvider('sk-test', 'deepseek-v4-flash');
+    expect(deepseekProvider.model).toBe('deepseek-v4-flash');
+
+    // Teste com gpt-6-astra
+    const astraProvider = new AgentRouterProvider('sk-test', 'gpt-6-astra');
+    expect(astraProvider.model).toBe('gpt-6-astra');
+
+    await astraProvider.answer(sampleQuestion);
+    const [, options] = mockFetch.mock.calls[0];
+    const body = JSON.parse(options.body as string);
+    expect(body.model).toBe('gpt-6-astra');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('AgentRouterProvider lança erro descritivo se a chave de API estiver ausente', async () => {
+    const provider = new AgentRouterProvider('', 'claude-opus-4-8');
+    await expect(provider.answer(sampleQuestion)).rejects.toThrow('AGENTROUTER_API_KEY ausente');
   });
 
   it('parseModelOutput suporta JSON puro e formato com markdown ```json', () => {

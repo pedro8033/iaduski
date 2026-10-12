@@ -7,7 +7,8 @@ data class AppSettings(
     val serverUrl: String = "http://10.0.2.2:3001",
     val directGeminiKey: String = "",
     val directOpenRouterKey: String = "",
-    val model: String = "gemini-2.5-flash",
+    val directAgentRouterKey: String = "",
+    val model: String = "gemini-3.5-flash-lite",
     val mode: String = "complete",
     val autoCopy: Boolean = true,
     val hapticFeedback: Boolean = true,
@@ -24,6 +25,7 @@ data class AppSettings(
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_GEMINI_KEY = "gemini_key"
         private const val KEY_OPENROUTER_KEY = "openrouter_key"
+        private const val KEY_AGENTROUTER_KEY = "agentrouter_key"
         private const val KEY_MODEL = "model"
         private const val KEY_MODE = "mode"
         private const val KEY_AUTO_COPY = "auto_copy"
@@ -38,11 +40,16 @@ data class AppSettings(
 
         fun load(context: Context): AppSettings {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val rawModel = prefs.getString(KEY_MODEL, "gemini-3.5-flash-lite") ?: "gemini-3.5-flash-lite"
+            val sanitizedModel = if (rawModel.contains("1.5") || rawModel.contains("2.0") || rawModel.contains("2.5") || rawModel.contains("3-pro-image")) {
+                "gemini-3.5-flash-lite"
+            } else rawModel
             return AppSettings(
                 serverUrl = prefs.getString(KEY_SERVER_URL, "http://10.0.2.2:3001") ?: "http://10.0.2.2:3001",
                 directGeminiKey = prefs.getString(KEY_GEMINI_KEY, "") ?: "",
                 directOpenRouterKey = prefs.getString(KEY_OPENROUTER_KEY, "") ?: "",
-                model = prefs.getString(KEY_MODEL, "gemini-2.5-flash") ?: "gemini-2.5-flash",
+                directAgentRouterKey = prefs.getString(KEY_AGENTROUTER_KEY, "") ?: "",
+                model = sanitizedModel,
                 mode = prefs.getString(KEY_MODE, "complete") ?: "complete",
                 autoCopy = prefs.getBoolean(KEY_AUTO_COPY, true),
                 hapticFeedback = prefs.getBoolean(KEY_HAPTIC, true),
@@ -62,6 +69,7 @@ data class AppSettings(
                 .putString(KEY_SERVER_URL, settings.serverUrl)
                 .putString(KEY_GEMINI_KEY, settings.directGeminiKey)
                 .putString(KEY_OPENROUTER_KEY, settings.directOpenRouterKey)
+                .putString(KEY_AGENTROUTER_KEY, settings.directAgentRouterKey)
                 .putString(KEY_MODEL, settings.model)
                 .putString(KEY_MODE, settings.mode)
                 .putBoolean(KEY_AUTO_COPY, settings.autoCopy)

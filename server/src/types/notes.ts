@@ -4,7 +4,18 @@ export type NoteColor =
   | 'green'
   | 'gold'
   | 'gray'
+  | 'terracotta'
   | string;
+
+export interface NoteTemplate {
+  id: string;
+  name: string;
+  description: string;
+  title: string;
+  content: string;
+  color: string;
+  tags: string[];
+}
 
 export interface NoteCategory {
   id: string;

@@ -11,8 +11,10 @@ document.addEventListener('DOMContentLoaded', () => {
     activeProvider: 'gemini',
     geminiSettings: { hasKey: false, maskedKey: '', model: 'gemini-2.0-flash' },
     openrouterSettings: { hasKey: false, maskedKey: '', model: 'deepseek/deepseek-r1:free' },
+    agentrouterSettings: { hasKey: false, maskedKey: '', model: 'claude-opus-4-8', baseUrl: 'https://agentrouter.org/v1' },
     geminiModels: [],
     openrouterModels: [],
+    agentrouterModels: [],
     openrouterFilter: 'all',
     openrouterSearchQuery: '',
     voiceMode: 'realtime', // 'realtime' ou 'dictation'
@@ -99,6 +101,20 @@ document.addEventListener('DOMContentLoaded', () => {
     openRouterModelCaps: document.getElementById('openrouter-model-caps'),
     inputSearchOpenRouterModel: document.getElementById('input-search-openrouter-model'),
     filterPills: document.querySelectorAll('.filter-pill'),
+
+    // AgentRouter Config Box
+    boxAgentRouterConfig: document.getElementById('box-agentrouter-config'),
+    badgeStatusAgentRouter: document.getElementById('badge-status-agentrouter'),
+    inputAgentRouterKey: document.getElementById('input-agentrouter-key'),
+    inputAgentRouterBaseUrl: document.getElementById('input-agentrouter-base-url'),
+    btnToggleShowAgentRouter: document.getElementById('btn-toggle-show-agentrouter'),
+    btnTestAgentRouter: document.getElementById('btn-test-agentrouter'),
+    btnSaveAgentRouter: document.getElementById('btn-save-agentrouter'),
+    btnRemoveAgentRouter: document.getElementById('btn-remove-agentrouter'),
+    feedbackAgentRouter: document.getElementById('feedback-agentrouter'),
+    selectAgentRouterModel: document.getElementById('select-agentrouter-model'),
+    btnRefreshAgentRouterModels: document.getElementById('btn-refresh-agentrouter-models'),
+    agentRouterModelDesc: document.getElementById('agentrouter-model-desc'),
 
     // Voz & Áudio Settings
     voiceModeCards: document.querySelectorAll('.voice-mode-card'),
@@ -273,6 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.activeProvider = data.provider || 'gemini';
         state.geminiSettings = data.gemini || { hasKey: false, maskedKey: '', model: 'gemini-2.0-flash' };
         state.openrouterSettings = data.openrouter || { hasKey: false, maskedKey: '', model: 'deepseek/deepseek-r1:free' };
+        state.agentrouterSettings = data.agentrouter || { hasKey: false, maskedKey: '', model: 'claude-opus-4-8', baseUrl: 'https://agentrouter.org/v1' };
         state.voiceMode = data.voiceMode || 'realtime';
 
         updateSettingsUI();
@@ -285,7 +302,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateSettingsUI() {
     // 1. Atualizar rótulo no rodapé do perfil
     let engineLabel = 'Google Gemini';
-    if (state.activeProvider === 'openrouter') engineLabel = 'OpenRouter';
+    if (state.activeProvider === 'agentrouter') engineLabel = 'AgentRouter';
+    else if (state.activeProvider === 'openrouter') engineLabel = 'OpenRouter';
     else if (state.activeProvider === 'typesafe') engineLabel = 'TypeSafe JEV';
     else if (state.activeProvider === 'mock') engineLabel = 'Offline Local';
     if (dom.currentEngineLabel) dom.currentEngineLabel.textContent = engineLabel;
@@ -307,7 +325,18 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // 4. Status OpenRouter
+    // 4. Status AgentRouter
+    if (dom.badgeStatusAgentRouter) {
+      if (state.agentrouterSettings.hasKey) {
+        dom.badgeStatusAgentRouter.className = 'connection-status-pill connected';
+        dom.badgeStatusAgentRouter.querySelector('.status-text').textContent = `Conectado (${state.agentrouterSettings.maskedKey})`;
+      } else {
+        dom.badgeStatusAgentRouter.className = 'connection-status-pill';
+        dom.badgeStatusAgentRouter.querySelector('.status-text').textContent = 'Chave ausente';
+      }
+    }
+
+    // 5. Status OpenRouter
     if (dom.badgeStatusOpenRouter) {
       if (state.openrouterSettings.hasKey) {
         dom.badgeStatusOpenRouter.className = 'connection-status-pill connected';
@@ -318,7 +347,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // 5. Modo de Voz Ativo
+    // 6. Modo de Voz Ativo
     dom.voiceModeCards.forEach((card) => {
       const m = card.getAttribute('data-voice-mode');
       card.classList.toggle('active', m === state.voiceMode);
@@ -346,9 +375,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Validação em Tempo Real de Chaves
   async function validateApiKey(provider) {
     const isGemini = provider === 'gemini';
-    const inputEl = isGemini ? dom.inputGeminiKey : dom.inputOpenRouterKey;
-    const feedbackEl = isGemini ? dom.feedbackGemini : dom.feedbackOpenRouter;
-    const badgeEl = isGemini ? dom.badgeStatusGemini : dom.badgeStatusOpenRouter;
+    const isAgentRouter = provider === 'agentrouter';
+    const inputEl = isGemini ? dom.inputGeminiKey : isAgentRouter ? dom.inputAgentRouterKey : dom.inputOpenRouterKey;
+    const feedbackEl = isGemini ? dom.feedbackGemini : isAgentRouter ? dom.feedbackAgentRouter : dom.feedbackOpenRouter;
+    const badgeEl = isGemini ? dom.badgeStatusGemini : isAgentRouter ? dom.badgeStatusAgentRouter : dom.badgeStatusOpenRouter;
     const keyVal = inputEl ? inputEl.value.trim() : '';
 
     feedbackEl.textContent = 'A validar ligação com o serviço oficial...';
@@ -381,8 +411,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Salvar Chaves com Segurança
   async function saveApiKey(provider) {
     const isGemini = provider === 'gemini';
-    const inputEl = isGemini ? dom.inputGeminiKey : dom.inputOpenRouterKey;
-    const feedbackEl = isGemini ? dom.feedbackGemini : dom.feedbackOpenRouter;
+    const isAgentRouter = provider === 'agentrouter';
+    const inputEl = isGemini ? dom.inputGeminiKey : isAgentRouter ? dom.inputAgentRouterKey : dom.inputOpenRouterKey;
+    const feedbackEl = isGemini ? dom.feedbackGemini : isAgentRouter ? dom.feedbackAgentRouter : dom.feedbackOpenRouter;
     const keyVal = inputEl ? inputEl.value.trim() : '';
 
     if (!keyVal) {
@@ -392,7 +423,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
-      const payload = isGemini ? { geminiApiKey: keyVal } : { openrouterApiKey: keyVal };
+      const payload = isGemini
+        ? { geminiApiKey: keyVal }
+        : isAgentRouter
+        ? {
+            agentrouterApiKey: keyVal,
+            agentrouterBaseUrl: dom.inputAgentRouterBaseUrl?.value?.trim() || undefined,
+            agentrouterModel: dom.selectAgentRouterModel?.value || undefined,
+          }
+        : { openrouterApiKey: keyVal };
+
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -406,6 +446,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Chave de API guardada com sucesso!');
         await loadSettings();
         if (isGemini) loadGeminiModels(true);
+        else if (isAgentRouter) loadAgentRouterModels(true);
         else loadOpenRouterModels(true);
       }
     } catch (err) {
@@ -417,13 +458,19 @@ document.addEventListener('DOMContentLoaded', () => {
   // Remover Chaves com Confirmação
   async function removeApiKey(provider) {
     const isGemini = provider === 'gemini';
-    const providerName = isGemini ? 'Google Gemini' : 'OpenRouter';
+    const isAgentRouter = provider === 'agentrouter';
+    const providerName = isGemini ? 'Google Gemini' : isAgentRouter ? 'AgentRouter' : 'OpenRouter';
     if (!confirm(`Tem a certeza de que deseja remover a chave API do ${providerName}?`)) {
       return;
     }
 
     try {
-      const payload = isGemini ? { removeGeminiKey: true } : { removeOpenRouterKey: true };
+      const payload = isGemini
+        ? { removeGeminiKey: true }
+        : isAgentRouter
+        ? { removeAgentRouterKey: true }
+        : { removeOpenRouterKey: true };
+
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -431,7 +478,63 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       const data = await res.json();
       if (data.ok) {
-        const feedbackEl = isGemini ? dom.feedbackGemini : dom.feedbackOpenRouter;
+        const feedbackEl = isGemini ? dom.feedbackGemini : isAgentRouter ? dom.feedbackAgentRouter : dom.feedbackOpenRouter;
+        feedbackEl.textContent = 'Chave removida.';
+        feedbackEl.className = 'action-feedback-msg';
+        showToast(`Chave de ${providerName} removida.`);
+        await loadSettings();
+      }
+    } catch (err) {
+      showToast(`Erro ao remover chave: ${err.message}`);
+    }
+  }
+
+  // Carregar e Renderizar Modelos AgentRouter
+  async function loadAgentRouterModels(forceRefresh = false) {
+    if (!dom.selectAgentRouterModel) return;
+    try {
+      dom.selectAgentRouterModel.innerHTML = '<option>A carregar modelos do AgentRouter...</option>';
+      const res = await fetch('/api/ai/models?provider=agentrouter');
+      if (res.ok) {
+        const data = await res.json();
+        state.agentrouterModels = data.models || [];
+        renderAgentRouterModelOptions();
+      }
+    } catch (err) {
+      console.warn('[app] Erro ao carregar modelos AgentRouter:', err);
+    }
+  }
+
+  function renderAgentRouterModelOptions() {
+    if (!dom.selectAgentRouterModel) return;
+    dom.selectAgentRouterModel.innerHTML = '';
+    const currentSelected = state.agentrouterSettings.model || 'claude-opus-4-8';
+
+    state.agentrouterModels.forEach((m) => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.name;
+      if (m.id === currentSelected || (currentSelected === 'laude-opus-4-8' && m.id === 'claude-opus-4-8')) {
+        opt.selected = true;
+      }
+      dom.selectAgentRouterModel.appendChild(opt);
+    });
+
+    updateAgentRouterModelBanner();
+  }
+
+  function updateAgentRouterModelBanner() {
+    const selectedId = dom.selectAgentRouterModel?.value;
+    const model = state.agentrouterModels.find((m) => m.id === selectedId);
+    if (dom.agentRouterModelDesc && model) {
+      const priceText = model.pricing?.info || 'AgentRouter';
+      const caps = [
+        model.capabilities.text ? 'Texto' : '',
+        model.capabilities.image ? 'Visão' : '',
+      ].filter(Boolean).join(', ');
+      dom.agentRouterModelDesc.textContent = `${model.name} • ${model.description || ''} • Capacidades: ${caps} • ${priceText}`;
+    }
+  }
         feedbackEl.textContent = 'Chave removida.';
         feedbackEl.className = 'action-feedback-msg';
         showToast(`Chave de ${providerName} removida.`);
@@ -567,6 +670,7 @@ document.addEventListener('DOMContentLoaded', () => {
           loadSettings();
           if (state.geminiModels.length === 0) loadGeminiModels();
           if (state.openrouterModels.length === 0) loadOpenRouterModels();
+          if (state.agentrouterModels.length === 0) loadAgentRouterModels();
         });
       }
     });
@@ -598,6 +702,9 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.btnToggleShowGemini?.addEventListener('click', () => {
       dom.inputGeminiKey.type = dom.inputGeminiKey.type === 'password' ? 'text' : 'password';
     });
+    dom.btnToggleShowAgentRouter?.addEventListener('click', () => {
+      dom.inputAgentRouterKey.type = dom.inputAgentRouterKey.type === 'password' ? 'text' : 'password';
+    });
     dom.btnToggleShowOpenRouter?.addEventListener('click', () => {
       dom.inputOpenRouterKey.type = dom.inputOpenRouterKey.type === 'password' ? 'text' : 'password';
     });
@@ -612,19 +719,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Testar Chaves
     dom.btnTestGemini?.addEventListener('click', () => validateApiKey('gemini'));
+    dom.btnTestAgentRouter?.addEventListener('click', () => validateApiKey('agentrouter'));
     dom.btnTestOpenRouter?.addEventListener('click', () => validateApiKey('openrouter'));
 
     // Guardar Chaves
     dom.btnSaveGemini?.addEventListener('click', () => saveApiKey('gemini'));
+    dom.btnSaveAgentRouter?.addEventListener('click', () => saveApiKey('agentrouter'));
     dom.btnSaveOpenRouter?.addEventListener('click', () => saveApiKey('openrouter'));
 
     // Remover Chaves
     dom.btnRemoveGemini?.addEventListener('click', () => removeApiKey('gemini'));
+    dom.btnRemoveAgentRouter?.addEventListener('click', () => removeApiKey('agentrouter'));
     dom.btnRemoveOpenRouter?.addEventListener('click', () => removeApiKey('openrouter'));
 
     // Atualizar Listas
     dom.btnRefreshGeminiModels?.addEventListener('click', () => loadGeminiModels(true));
+    dom.btnRefreshAgentRouterModels?.addEventListener('click', () => loadAgentRouterModels(true));
     dom.btnRefreshOpenRouterModels?.addEventListener('click', () => loadOpenRouterModels(true));
+
+    // Mudança de Modelo AgentRouter
+    dom.selectAgentRouterModel?.addEventListener('change', async (e) => {
+      const selected = e.target.value;
+      updateAgentRouterModelBanner();
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentrouterModel: selected }),
+      });
+      state.agentrouterSettings.model = selected;
+      showToast(`Modelo AgentRouter definido: ${selected}`);
+    });
+
+    // Mudança de URL Base AgentRouter
+    dom.inputAgentRouterBaseUrl?.addEventListener('change', async (e) => {
+      const url = e.target.value.trim();
+      if (url) {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentrouterBaseUrl: url }),
+        });
+        state.agentrouterSettings.baseUrl = url;
+        showToast('URL Base do AgentRouter atualizada!');
+      }
+    });
 
     // Mudança de Modelo Gemini
     dom.selectGeminiModel?.addEventListener('change', async (e) => {
@@ -939,17 +1077,111 @@ document.addEventListener('DOMContentLoaded', () => {
         resultData.title = 'Imagem IA Gerada';
         resultData.resultText = `Imagem gerada com sucesso para: *"${cleanPrompt}"*`;
       } else {
-        const res = await fetch('/api/assistant/action', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: effectiveAction || 'ask',
-            content: userText || undefined,
-            prompt: userText || undefined,
-            image: attachedImg || undefined,
-          }),
-        });
-        resultData = await res.json();
+        // Tenta streaming progressivo via SSE para resposta em tempo real
+        let streamedSuccessfully = false;
+        try {
+          const streamRes = await fetch('/api/assistant/stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: effectiveAction || 'ask',
+              content: userText || undefined,
+              prompt: userText || undefined,
+              image: attachedImg || undefined,
+            }),
+          });
+
+          if (streamRes.ok && streamRes.body) {
+            // Remove indicador de digitação e cria nó de resposta progressiva
+            document.getElementById(typingId)?.remove();
+
+            const streamRow = document.createElement('div');
+            streamRow.className = 'chat-message-row assistant';
+            streamRow.innerHTML = `
+              <div class="assistant-avatar">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+              </div>
+              <div class="assistant-content">
+                <div class="streaming-text markdown-body"></div>
+              </div>
+            `;
+            dom.chatMessages.appendChild(streamRow);
+            const textEl = streamRow.querySelector('.streaming-text');
+
+            const reader = streamRes.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let accumulatedText = '';
+            let streamMeta = null;
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || '';
+
+              let currentEvent = 'chunk';
+              for (const line of lines) {
+                if (line.startsWith('event: ')) {
+                  currentEvent = line.slice(7).trim();
+                } else if (line.startsWith('data: ')) {
+                  const rawData = line.slice(6).trim();
+                  if (!rawData) continue;
+                  if (currentEvent === 'chunk') {
+                    try {
+                      accumulatedText += JSON.parse(rawData);
+                    } catch {
+                      accumulatedText += rawData;
+                    }
+                    if (textEl) {
+                      textEl.innerHTML = renderMarkdown(accumulatedText);
+                      scrollToBottom();
+                    }
+                  } else if (currentEvent === 'done') {
+                    try {
+                      streamMeta = JSON.parse(rawData);
+                    } catch {}
+                  } else if (currentEvent === 'error') {
+                    const errPayload = JSON.parse(rawData);
+                    throw new Error(errPayload.error || 'Erro no streaming');
+                  }
+                }
+              }
+            }
+
+            // Remove o streamRow temporário para renderizar o card completo finalizado com ações
+            streamRow.remove();
+
+            resultData = {
+              action: streamMeta?.action || effectiveAction,
+              title: streamMeta?.title || 'Resposta',
+              resultText: accumulatedText || 'Análise concluída.',
+              diagramCode: streamMeta?.diagramCode,
+              imageUrl: streamMeta?.imageUrl,
+              keyPoints: streamMeta?.keyPoints,
+              latencyMs: streamMeta?.latencyMs,
+              provider: streamMeta?.provider || 'gemini',
+            };
+            streamedSuccessfully = true;
+          }
+        } catch (streamErr) {
+          console.warn('[app.js] Streaming falhou ou não suportado, tentando fallback padrão:', streamErr);
+        }
+
+        if (!streamedSuccessfully) {
+          const res = await fetch('/api/assistant/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: effectiveAction || 'ask',
+              content: userText || undefined,
+              prompt: userText || undefined,
+              image: attachedImg || undefined,
+            }),
+          });
+          resultData = await res.json();
+        }
       }
 
       // Remover indicador de digitação
@@ -1568,14 +1800,47 @@ document.addEventListener('DOMContentLoaded', () => {
       { id: 'lemon', label: 'Amarelo-limão', hex: '#eeff00' },
       { id: 'green', label: 'Verde-claro', hex: '#82ff80' },
       { id: 'gold', label: 'Amarelo-ouro', hex: '#ffd91a' },
-      { id: 'gray', label: 'Cinzento', hex: '#bdbdbd' }
+      { id: 'gray', label: 'Cinzento', hex: '#bdbdbd' },
+      { id: 'terracotta', label: 'Terracota', hex: '#c84b15' }
+    ],
+
+    TEMPLATES: [
+      {
+        id: 'default_blank',
+        name: 'Bloco Padrão (Livre)',
+        description: 'Modelo clássico de anotações livres em branco com suporte a Markdown',
+        title: '',
+        content: '',
+        color: '#2e80ea',
+        tags: []
+      },
+      {
+        id: 'surgical_terminology_table',
+        name: 'Tabela: Segundo elemento & Significado',
+        description: 'Modelo de terminologia cirúrgica e médica com prefixos/sufixos e significados',
+        title: 'Segundo Elemento e Significado',
+        content: `| Segundo elemento | Significado |\n| :--- | :--- |\n| **-algia/algo** | Dor |\n| **-cele** | Tumor; hérnia |\n| **-centese** | Punção; orifício |\n| **-ectomia** | Remoção parcial ou total |\n| **-oma** | Tumor |\n| **-pexia** | Fixação de um órgão |\n| **-plastia** | Reconstituição de uma parte do corpo |\n| **-rafia** | Sutura |\n| **-scopia** | Ato de ver; observar |\n| **-stomia** | Comunicação entre dois órgãos ocos ou entre um órgão e a pele |\n| **-tomia** | Corte ; abertura |`,
+        color: '#c84b15',
+        tags: ['terminologia', 'cirurgia', 'sufixos']
+      }
     ],
 
     getColorStyle(colorVal) {
       if (!colorVal) return { background: '#2e80ea', border: '#1c63bd', isLight: false };
       // Se for um id da paleta
       const p = this.PALETTE.find(c => c.id === colorVal);
-      const hex = p ? p.hex : (colorVal.startsWith('#') ? colorVal : '#2e80ea');
+      const hex = p ? p.hex : (colorVal.startsWith('#') ? colorVal : (colorVal === 'terracotta' ? '#c84b15' : '#2e80ea'));
+
+      if (colorVal === 'terracotta' || hex.toLowerCase() === '#c84b15') {
+        return {
+          background: '#c84b15',
+          border: 'rgba(255, 255, 255, 0.25)',
+          textColor: '#ffffff',
+          subTextColor: '#fde8e5',
+          tagBg: 'rgba(255, 255, 255, 0.2)',
+          isLight: false
+        };
+      }
 
       // Calcular luminosidade para determinar cor de texto e borda
       const r = parseInt(hex.slice(1, 3), 16) || 0;
@@ -1638,8 +1903,13 @@ document.addEventListener('DOMContentLoaded', () => {
       sidebarNotesBtn?.addEventListener('click', switchToNotes);
       segChat?.addEventListener('click', switchToChat);
 
-      // Botões Nova Nota e Criar com IA
+      // Botões Nova Nota, Modelos e Criar com IA
       document.getElementById('btn-web-new-note')?.addEventListener('click', () => this.openEditor(null));
+      document.getElementById('btn-web-template-note')?.addEventListener('click', () => this.openTemplatesModal());
+      document.getElementById('btn-close-templates-modal')?.addEventListener('click', () => {
+        document.getElementById('modal-note-templates').style.display = 'none';
+      });
+      document.getElementById('btn-toggle-note-preview')?.addEventListener('click', () => this.toggleEditorPreview());
       document.getElementById('btn-web-ai-note')?.addEventListener('click', () => {
         const topic = prompt('Digite o tema para a IA redigir os apontamentos:');
         if (topic && topic.trim()) {
@@ -2113,7 +2383,7 @@ document.addEventListener('DOMContentLoaded', () => {
               </div>
             </div>
             <h3 class="note-card-title" style="color: ${st.textColor};">${escapeHtml(n.title || 'Sem título')}</h3>
-            <div class="note-card-preview" style="color: ${st.subTextColor};">${escapeHtml(n.content || '(Nota vazia)')}</div>
+            <div class="note-card-preview" style="color: ${st.subTextColor};">${escapeHtml(this.formatNotePreview(n.content))}</div>
             ${n.tags && n.tags.length > 0 ? `
               <div class="note-card-tags">
                 ${n.tags.map(t => `<span class="note-tag-badge" style="background: ${st.tagBg}; color: ${st.textColor};">#${escapeHtml(t)}</span>`).join('')}
@@ -2204,6 +2474,12 @@ document.addEventListener('DOMContentLoaded', () => {
       titleInp.value = this.activeEditingNote.title || '';
       contentInp.value = this.activeEditingNote.content || '';
       catSelect.value = this.activeEditingNote.categoryId || '';
+
+      const previewDiv = document.getElementById('editor-note-preview');
+      const previewBtn = document.getElementById('btn-toggle-note-preview');
+      if (previewDiv) previewDiv.style.display = 'none';
+      if (contentInp) contentInp.style.display = 'block';
+      if (previewBtn) previewBtn.textContent = '👁 Ver';
 
       const favSvg = document.getElementById('svg-editor-fav');
       if (favSvg) {
@@ -2313,7 +2589,125 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     },
 
+    formatNotePreview(text) {
+      if (!text) return '(Nota vazia)';
+      if (text.includes('| Segundo elemento |') || text.includes('| :--- |')) {
+        const lines = text.split('\n')
+          .filter(l => l.trim().startsWith('|') && !l.includes('---') && !l.toLowerCase().includes('segundo elemento'))
+          .map(l => {
+            const parts = l.split('|').map(s => s.trim().replace(/\*\*/g, '')).filter(Boolean);
+            return parts.length >= 2 ? `${parts[0]}: ${parts[1]}` : parts[0] || '';
+          })
+          .filter(Boolean);
+        if (lines.length > 0) {
+          return lines.slice(0, 4).join(' • ') + (lines.length > 4 ? '...' : '');
+        }
+      }
+      return text;
+    },
+
+    openTemplatesModal() {
+      const modal = document.getElementById('modal-note-templates');
+      const container = document.getElementById('templates-list-container');
+      if (!modal || !container) return;
+
+      container.innerHTML = this.TEMPLATES.map(t => {
+        const isTable = t.id === 'surgical_terminology_table';
+        return `
+          <div class="template-card-item" onclick="notesManager.createNoteFromTemplate('${t.id}')">
+            <div class="template-card-icon ${isTable ? 'template-icon-table' : 'template-icon-blank'}">
+              ${isTable 
+                ? `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><line x1="4" y1="9" x2="20" y2="9"/><line x1="10" y1="9" x2="10" y2="20"/></svg>`
+                : `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`
+              }
+            </div>
+            <div class="template-card-info">
+              <div class="template-card-header">
+                <span class="template-card-name">${escapeHtml(t.name)}</span>
+                ${isTable 
+                  ? `<span class="badge-new-template">Novo Modelo</span>` 
+                  : `<span class="badge-default-template">Padrão</span>`
+                }
+              </div>
+              <div class="template-card-desc">${escapeHtml(t.description)}</div>
+              <div class="template-card-preview-pill">
+                ${isTable ? '📊 11 termos cirúrgicos & significados • Terracota' : '📝 Anotações livres em branco'}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      modal.style.display = 'flex';
+    },
+
+    async createNoteFromTemplate(templateId) {
+      const tmpl = this.TEMPLATES.find(t => t.id === templateId) || this.TEMPLATES[0];
+      const modal = document.getElementById('modal-note-templates');
+      if (modal) modal.style.display = 'none';
+
+      const newNote = {
+        id: 'note_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        title: tmpl.title || '',
+        content: tmpl.content || '',
+        color: tmpl.id === 'surgical_terminology_table' ? 'terracotta' : (tmpl.color || 'blue'),
+        categoryId: null,
+        tags: [...(tmpl.tags || [])],
+        isPinned: false,
+        isFavorite: false,
+        isArchived: false,
+        isDeleted: false,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+
+      try {
+        const res = await fetch('/api/notes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newNote)
+        });
+        const data = await res.json();
+        if (data.success && data.note) {
+          const idx = this.notes.findIndex(n => n.id === data.note.id);
+          if (idx >= 0) this.notes[idx] = data.note;
+          else this.notes.unshift(data.note);
+          this.renderNotes();
+          this.openEditor(data.note.id);
+          showToast(`Modelo "${tmpl.name}" carregado com sucesso!`);
+          return;
+        }
+      } catch (err) {
+        console.error('Falha ao criar nota por modelo:', err);
+      }
+
+      this.notes.unshift(newNote);
+      this.renderNotes();
+      this.openEditor(newNote.id);
+    },
+
+    toggleEditorPreview() {
+      const contentInp = document.getElementById('editor-note-content');
+      const previewDiv = document.getElementById('editor-note-preview');
+      const btn = document.getElementById('btn-toggle-note-preview');
+      if (!contentInp || !previewDiv) return;
+
+      const isPreviewing = previewDiv.style.display !== 'none';
+      if (isPreviewing) {
+        previewDiv.style.display = 'none';
+        contentInp.style.display = 'block';
+        if (btn) btn.textContent = '👁 Ver';
+      } else {
+        const text = contentInp.value || '';
+        previewDiv.innerHTML = renderMarkdown(text);
+        contentInp.style.display = 'none';
+        previewDiv.style.display = 'block';
+        if (btn) btn.textContent = '✏ Editar';
+      }
+    },
+
     applyFormat(cmd) {
+      if (!cmd) return;
       const textarea = document.getElementById('editor-note-content');
       if (!textarea) return;
       const start = textarea.selectionStart;
@@ -2332,6 +2726,21 @@ document.addEventListener('DOMContentLoaded', () => {
         case 'bullet': insertion = `\n- ${sel || 'Item da lista'}`; break;
         case 'checklist': insertion = `\n- [ ] ${sel || 'Nova tarefa'}`; break;
         case 'code': insertion = `\n\`\`\`\n${sel || '// código aqui'}\n\`\`\`\n`; break;
+        case 'template-table': {
+          const tmpl = this.TEMPLATES.find(t => t.id === 'surgical_terminology_table');
+          const tableContent = tmpl ? tmpl.content : '';
+          insertion = (text.trim().length > 0 ? '\n\n' : '') + tableContent;
+          const titleInp = document.getElementById('editor-note-title');
+          if (titleInp && !titleInp.value) {
+            titleInp.value = tmpl ? tmpl.title : 'Segundo Elemento e Significado';
+            if (this.activeEditingNote) this.activeEditingNote.title = titleInp.value;
+          }
+          if (this.activeEditingNote) {
+            this.activeEditingNote.color = 'terracotta';
+            this.applyEditorTheme('terracotta');
+          }
+          break;
+        }
       }
 
       textarea.value = before + insertion + after;

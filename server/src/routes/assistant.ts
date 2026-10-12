@@ -50,6 +50,53 @@ export function createAssistantRouter(assistantService: AssistantService): Route
     }
   });
 
+  // SSE Streaming endpoint — sends tokens progressively
+  router.post('/stream', async (req, res) => {
+    const parsed = assistantActionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: 'INVALID_REQUEST',
+        details: parsed.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`),
+      });
+      return;
+    }
+
+    // Set up SSE headers
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no', // Disable nginx buffering
+    });
+
+    // Handle client disconnect
+    let closed = false;
+    req.on('close', () => { closed = true; });
+
+    try {
+      for await (const chunk of assistantService.executeActionStream(parsed.data)) {
+        if (closed) break;
+
+        // Check if this is the final metadata chunk (prefixed with \0)
+        if (chunk.startsWith('\0')) {
+          const metadata = chunk.slice(1);
+          res.write(`event: done\ndata: ${metadata}\n\n`);
+        } else {
+          // Regular text chunk
+          res.write(`event: chunk\ndata: ${JSON.stringify(chunk)}\n\n`);
+        }
+      }
+    } catch (err) {
+      if (!closed) {
+        res.write(`event: error\ndata: ${JSON.stringify({ error: (err as Error).message })}\n\n`);
+      }
+    }
+
+    if (!closed) {
+      res.end();
+    }
+  });
+
   router.post('/image', async (req, res) => {
     const parsed = imageGenerationSchema.safeParse(req.body);
     if (!parsed.success) {

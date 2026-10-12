@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,6 +36,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.StartOffset
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
@@ -55,16 +72,35 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Style
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.style.TextOverflow
+import com.example.aiquestionassistant.NoteEditorKey
+import com.example.aiquestionassistant.data.NotesLocalRepository
+import com.example.aiquestionassistant.data.Note
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.heightIn
@@ -170,9 +206,14 @@ fun MainScreen(
     // Estado da Interface Gemini e Janela Lateral (Drawer)
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var historyItems by remember { mutableStateOf<List<AssistantResult>>(emptyList()) }
+    val notesRepo = remember { NotesLocalRepository(context) }
+    var notesItems by remember { mutableStateOf<List<Note>>(emptyList()) }
+    var historySearchQuery by remember { mutableStateOf("") }
+
     LaunchedEffect(drawerState.isOpen) {
         if (drawerState.isOpen) {
             historyItems = historyRepo.getItems()
+            notesItems = try { notesRepo.getNotes() } catch (_: Exception) { emptyList() }
         }
     }
 
@@ -181,6 +222,30 @@ fun MainScreen(
 
     var isLoading by remember { mutableStateOf(false) }
     var currentResult by remember { mutableStateOf<AssistantResult?>(null) }
+
+    // Mensagens da conversa (inicialmente idênticas à imagem de referência)
+    var chatMessages by remember {
+        mutableStateOf(
+            listOf(
+                ChatMessage(
+                    isUser = true,
+                    text = "Oi"
+                ),
+                ChatMessage(
+                    isUser = false,
+                    text = "Oiii! \uD83D\uDE04\uD83D\uDC4B Tudo bem contigo?\n\nComo está a correr o teu dia? Diz-me, em que posso ajudar hoje? \uD83D\uDE80"
+                ),
+                ChatMessage(
+                    isUser = true,
+                    text = "Em que ano foi fundada angola?"
+                ),
+                ChatMessage(
+                    isUser = false,
+                    text = "Angola tornou-se independente em **1975**, no dia **11 de novembro**. \uD83C\uDDE6\uD83C\uDDF4\n\nNo entanto, é importante distinguir duas datas:\n\n• **1575**: Fundação de Luanda, por Paulo Dias de Novais, durante a presença colonial portuguesa.\n• **11 de novembro de 1975**: Proclamação da Independência de Angola, sob a liderança de Agostinho Neto, o primeiro Presidente da República."
+                )
+            )
+        )
+    }
 
     // TTS
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
@@ -391,6 +456,8 @@ fun MainScreen(
         if (query.isBlank()) {
             Toast.makeText(context, "Digite ou dite uma pergunta para analisar", Toast.LENGTH_SHORT).show()
         } else {
+            val userMsg = ChatMessage(isUser = true, text = query)
+            chatMessages = chatMessages + userMsg
             isLoading = true
             inputText = ""
             scope.launch {
@@ -404,14 +471,17 @@ fun MainScreen(
                 isLoading = false
                 currentResult = res
                 if (res.isSuccess) {
+                    chatMessages = chatMessages + ChatMessage(isUser = false, text = res.resultText, result = res)
                     historyRepo.saveItem(res)
                     if (autoSpeak) {
                         speakText(res.resultText, true)
                     }
                 } else {
-                    Toast.makeText(context, res.error ?: "Falha ao processar", Toast.LENGTH_LONG).show()
+                    val err = res.error ?: "Falha ao processar resposta. Tente novamente."
+                    chatMessages = chatMessages + ChatMessage(isUser = false, text = err, result = res)
+                    Toast.makeText(context, err, Toast.LENGTH_LONG).show()
                     if (autoSpeak && isLiveConversationMode) {
-                        speakText(res.error ?: "Não foi possível obter resposta agora. Pode tentar novamente.", true)
+                        speakText(err, true)
                     }
                 }
             }
@@ -437,106 +507,354 @@ fun MainScreen(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet(
-                drawerContainerColor = Color(0xFF11141C),
+                drawerContainerColor = Color(0xFF000000),
                 drawerContentColor = Color.White,
-                modifier = Modifier.width(310.dp)
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(320.dp)
             ) {
-                // Header do Drawer
+                // Header do Drawer: "Gemini" à esquerda, "✕" à direita
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 18.dp),
+                        .padding(start = 22.dp, end = 16.dp, top = 16.dp, bottom = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        GeminiSparkleStar(sizeDp = 26.dp)
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "Gemini AI",
-                            color = Color.White,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    Text(
+                        text = "Gemini",
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Normal
+                    )
                     IconButton(
                         onClick = { scope.launch { drawerState.close() } },
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
                             Icons.Default.Close,
                             contentDescription = "Fechar menu",
-                            tint = Color.LightGray,
-                            modifier = Modifier.size(20.dp)
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
 
-                // Botão Nova Conversa
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp)
-                        .clickable {
-                            scope.launch { drawerState.close() }
-                            inputText = ""
-                            currentResult = null
-                        },
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2330)),
-                    shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2A3142))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Add,
-                            contentDescription = null,
-                            tint = Color(0xFF38BDF8),
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "Nova Conversa",
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Cabeçalho da Seção de Histórico
+                // Opções Principais da Sidebar
+                // 1. Novo chat
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 18.dp, end = 16.dp, top = 8.dp, bottom = 6.dp),
+                        .clickable {
+                            chatMessages = emptyList()
+                            inputText = ""
+                            currentResult = null
+                            scope.launch { drawerState.close() }
+                            Toast.makeText(context, "Novo chat iniciado", Toast.LENGTH_SHORT).show()
+                        }
+                        .padding(horizontal = 22.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Novo chat",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(18.dp))
+                    Text(
+                        text = "Novo chat",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+                }
+
+                // 2. Pesquisar chats (Campo de busca interativo com filtro em tempo real)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = "Pesquisar chats",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(18.dp))
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (historySearchQuery.isEmpty()) {
+                            Text(
+                                text = "Pesquisar chats",
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Normal
+                            )
+                        }
+                        BasicTextField(
+                            value = historySearchQuery,
+                            onValueChange = { historySearchQuery = it },
+                            singleLine = true,
+                            textStyle = TextStyle(
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Normal
+                            ),
+                            cursorBrush = SolidColor(Color.White),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    if (historySearchQuery.isNotEmpty()) {
+                        IconButton(
+                            onClick = { historySearchQuery = "" },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Limpar pesquisa",
+                                tint = Color(0xFFA0A0A0),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+
+                // 3. Spark BETA
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            scope.launch { drawerState.close() }
+                            showToolsSheet = true
+                        }
+                        .padding(horizontal = 22.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        contentDescription = "Spark",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(18.dp))
+                    Text(
+                        text = "Spark",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF262626))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "BETA",
+                            color = Color(0xFF9E9E9E),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                }
+
+                // 4. Estudantes
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            scope.launch { drawerState.close() }
+                            onItemClick(NotesScreenKey)
+                        }
+                        .padding(horizontal = 22.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.School,
+                        contentDescription = "Estudantes",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(18.dp))
+                    Text(
+                        text = "Estudantes",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+                }
+
+                // 5. Imagens
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            scope.launch { drawerState.close() }
+                            executeAction(AssistantActionType.IMAGE, null, false)
+                        }
+                        .padding(horizontal = 22.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Image,
+                        contentDescription = "Imagens",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(18.dp))
+                    Text(
+                        text = "Imagens",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+                }
+
+                // 6. Vídeos
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            scope.launch { drawerState.close() }
+                            showToolsSheet = true
+                        }
+                        .padding(horizontal = 22.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Videocam,
+                        contentDescription = "Vídeos",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(18.dp))
+                    Text(
+                        text = "Vídeos",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+                }
+
+                // 7. Biblioteca
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            scope.launch { drawerState.close() }
+                            onItemClick(NotesScreenKey)
+                        }
+                        .padding(horizontal = 22.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.GridView,
+                        contentDescription = "Biblioteca",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(18.dp))
+                    Text(
+                        text = "Biblioteca",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+                }
+
+                // 8. Botão Flutuante (Preservando switch, sobreposição e serviço)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 22.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            Icons.Default.History,
-                            contentDescription = null,
-                            tint = Color(0xFF94A3B8),
-                            modifier = Modifier.size(15.dp)
+                            Icons.Default.Layers,
+                            contentDescription = "Botão Flutuante",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Histórico de Conversas",
-                            color = Color(0xFF94A3B8),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        Spacer(modifier = Modifier.width(18.dp))
+                        Column {
+                            Text(
+                                text = "Botão Flutuante",
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Normal
+                            )
+                            Text(
+                                text = if (isServiceRunning) "Ativo sobre o ecrã" else "Desativado",
+                                color = if (isServiceRunning) Color(0xFF38BDF8) else Color(0xFF71717A),
+                                fontSize = 10.sp
+                            )
+                        }
                     }
+                    Switch(
+                        checked = isServiceRunning,
+                        onCheckedChange = { checked ->
+                            if (checked) {
+                                if (!hasOverlayPermission) {
+                                    val intent = Intent(
+                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        Uri.parse("package:${context.packageName}")
+                                    )
+                                    context.startActivity(intent)
+                                } else {
+                                    try {
+                                        val intent = Intent(context, FloatingBubbleService::class.java)
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                            context.startForegroundService(intent)
+                                        } else {
+                                            context.startService(intent)
+                                        }
+                                        isServiceRunning = true
+                                    } catch (e: Exception) {
+                                        isServiceRunning = false
+                                        Toast.makeText(context, "Erro ao iniciar serviço flutuante: ${e.message}", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            } else {
+                                try {
+                                    val intent = Intent(context, FloatingBubbleService::class.java)
+                                    context.stopService(intent)
+                                } catch (_: Exception) {}
+                                isServiceRunning = false
+                            }
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Color(0xFF38BDF8),
+                            uncheckedThumbColor = Color(0xFF9E9E9E),
+                            uncheckedTrackColor = Color(0xFF262626)
+                        )
+                    )
+                }
+
+                // Seção Notebooks
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 22.dp, end = 20.dp, top = 16.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Notebooks",
+                        color = Color(0xFF9E9E9E),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                     if (historyItems.isNotEmpty()) {
                         Text(
                             text = "Limpar",
-                            color = Color(0xFFF87171),
+                            color = Color(0xFFEF4444),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.clickable {
@@ -547,85 +865,125 @@ fun MainScreen(
                     }
                 }
 
-                // Lista de Histórico Rolável
+                // + Novo notebook
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            scope.launch { drawerState.close() }
+                            onItemClick(NoteEditorKey(null))
+                        }
+                        .padding(horizontal = 22.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "+ Novo notebook",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(18.dp))
+                    Text(
+                        text = "Novo notebook",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+                }
+
+                // Lista de Itens Rolável
+                val filteredHistory = remember(historyItems, historySearchQuery) {
+                    if (historySearchQuery.isBlank()) historyItems
+                    else historyItems.filter {
+                        it.title.contains(historySearchQuery, ignoreCase = true) ||
+                        it.resultText.contains(historySearchQuery, ignoreCase = true)
+                    }
+                }
+                val filteredNotes = remember(notesItems, historySearchQuery) {
+                    if (historySearchQuery.isBlank()) notesItems
+                    else notesItems.filter {
+                        it.title.contains(historySearchQuery, ignoreCase = true) ||
+                        it.content.contains(historySearchQuery, ignoreCase = true)
+                    }
+                }
+
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp)
                 ) {
-                    if (historyItems.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    Icons.Default.Chat,
-                                    contentDescription = null,
-                                    tint = Color(0xFF2B2F3D),
-                                    modifier = Modifier.size(32.dp)
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "Nenhuma conversa gravada",
-                                    color = Color.Gray,
-                                    fontSize = 12.sp,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
+                    if (filteredHistory.isEmpty() && filteredNotes.isEmpty()) {
+                        Text(
+                            text = if (historySearchQuery.isNotBlank()) "Nenhum resultado" else "Nenhum chat ou notebook recente",
+                            color = Color(0xFF71717A),
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp)
+                        )
                     } else {
                         LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            items(historyItems, key = { it.id }) { item ->
+                            items(filteredNotes, key = { "note_${it.id}" }) { note ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color(0xFF171A23))
                                         .clickable {
-                                            currentResult = item
                                             scope.launch { drawerState.close() }
+                                            onItemClick(NoteEditorKey(note.id))
                                         }
-                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        .padding(horizontal = 22.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = when (item.action) {
-                                            AssistantActionType.SUMMARIZE -> Icons.Default.Description
-                                            AssistantActionType.DIAGRAM -> Icons.Default.AccountTree
-                                            AssistantActionType.TRANSLATE -> Icons.Default.Translate
-                                            AssistantActionType.IMAGE -> Icons.Default.Image
-                                            AssistantActionType.EXPLAIN -> Icons.Default.Lightbulb
-                                            AssistantActionType.FLASHCARDS -> Icons.Default.Style
-                                            AssistantActionType.SOLVE -> Icons.Default.CheckCircle
-                                            else -> Icons.Default.Chat
-                                        },
+                                        Icons.Default.MenuBook,
                                         contentDescription = null,
-                                        tint = Color(0xFF38BDF8),
-                                        modifier = Modifier.size(16.dp)
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = item.title.ifBlank { item.action.label },
-                                            color = Color.White,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            maxLines = 1
-                                        )
-                                        Text(
-                                            text = item.resultText.take(45),
-                                            color = Color(0xFF94A3B8),
-                                            fontSize = 10.sp,
-                                            maxLines = 1
-                                        )
-                                    }
+                                    Spacer(modifier = Modifier.width(18.dp))
+                                    Text(
+                                        text = note.title.ifBlank { "Untitled notebook" },
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Normal,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+
+                            items(filteredHistory, key = { "history_${it.id}" }) { item ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            currentResult = item
+                                            chatMessages = listOf(
+                                                ChatMessage(isUser = true, text = item.title.ifBlank { item.action.label }),
+                                                ChatMessage(isUser = false, text = item.resultText, result = item)
+                                            )
+                                            scope.launch { drawerState.close() }
+                                        }
+                                        .padding(horizontal = 22.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.MenuBook,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(18.dp))
+                                    Text(
+                                        text = item.title.ifBlank { item.action.label },
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Normal,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
                                     IconButton(
                                         onClick = {
                                             historyRepo.deleteItem(item.id)
@@ -634,7 +992,7 @@ fun MainScreen(
                                         modifier = Modifier.size(24.dp)
                                     ) {
                                         Icon(
-                                            Icons.Default.Delete,
+                                            Icons.Default.Close,
                                             contentDescription = "Excluir",
                                             tint = Color(0xFF64748B),
                                             modifier = Modifier.size(14.dp)
@@ -642,164 +1000,26 @@ fun MainScreen(
                                     }
                                 }
                             }
-                        }
-                    }
-                }
 
-                HorizontalDivider(color = Color(0xFF222634))
-
-                // Seção Acesso Rápido
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    // Notas Inteligentes
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF171A23))
-                            .clickable {
-                                scope.launch { drawerState.close() }
-                                onItemClick(NotesScreenKey)
-                            }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Bookmarks,
-                            contentDescription = null,
-                            tint = Color(0xFF38BDF8),
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Notas Inteligentes",
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                text = "Anotações e cadernos com IA",
-                                color = Color(0xFF94A3B8),
-                                fontSize = 10.sp
-                            )
-                        }
-                    }
-
-                    // Botão Flutuante (Bubble)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF171A23))
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = Color(0xFFA78BFA),
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
+                            item {
                                 Text(
-                                    text = "Botão Flutuante",
-                                    color = Color.White,
+                                    text = "Todos os notebooks",
+                                    color = Color(0xFF71717A),
                                     fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Text(
-                                    text = if (isServiceRunning) "Ativo sobre o ecrã" else "Desativado",
-                                    color = if (isServiceRunning) Color(0xFF34D399) else Color.Gray,
-                                    fontSize = 10.sp
-                                )
-                            }
-                        }
-                        Switch(
-                            checked = isServiceRunning,
-                            onCheckedChange = { checked ->
-                                if (checked) {
-                                    if (!hasOverlayPermission) {
-                                        val intent = Intent(
-                                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                            Uri.parse("package:${context.packageName}")
-                                        )
-                                        context.startActivity(intent)
-                                    } else {
-                                        try {
-                                            val intent = Intent(context, FloatingBubbleService::class.java)
-                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                                context.startForegroundService(intent)
-                                            } else {
-                                                context.startService(intent)
-                                            }
-                                            isServiceRunning = true
-                                        } catch (e: Exception) {
-                                            isServiceRunning = false
-                                            Toast.makeText(context, "Erro ao iniciar serviço flutuante: ${e.message}", Toast.LENGTH_LONG).show()
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            scope.launch { drawerState.close() }
+                                            onItemClick(NotesScreenKey)
                                         }
-                                    }
-                                } else {
-                                    try {
-                                        val intent = Intent(context, FloatingBubbleService::class.java)
-                                        context.stopService(intent)
-                                    } catch (_: Exception) {}
-                                    isServiceRunning = false
-                                }
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = Color(0xFF38BDF8)
-                            )
-                        )
-                    }
-
-                    // Definições no Drawer
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF171A23))
-                            .clickable {
-                                scope.launch { drawerState.close() }
-                                onItemClick(SettingsScreenKey)
+                                        .padding(horizontal = 22.dp, vertical = 14.dp)
+                                )
                             }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Settings,
-                            contentDescription = null,
-                            tint = Color.LightGray,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Definições",
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                text = "Modelos de IA, servidor e opções",
-                                color = Color(0xFF94A3B8),
-                                fontSize = 10.sp
-                            )
                         }
                     }
                 }
 
-                HorizontalDivider(color = Color(0xFF222634))
-
-                // Rodapé com Perfil do Usuário
+                // Rodapé com Perfil do Usuário (Fiel à imagem de referência Gemini)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -807,16 +1027,17 @@ fun MainScreen(
                             scope.launch { drawerState.close() }
                             onItemClick(SettingsScreenKey)
                         }
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(38.dp)
                             .clip(CircleShape)
+                            .border(1.5.dp, Color(0xFF38BDF8), CircleShape)
                             .background(
-                                Brush.linearGradient(
-                                    listOf(Color(0xFF6366F1), Color(0xFF38BDF8))
+                                Brush.radialGradient(
+                                    listOf(Color(0xFF1E293B), Color(0xFF0F172A))
                                 )
                             ),
                         contentAlignment = Alignment.Center
@@ -824,475 +1045,285 @@ fun MainScreen(
                         Text(
                             text = "C",
                             color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp
                         )
                     }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text("Cláudio", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                        Text(settings.model.ifBlank { "gemini-2.5-flash" }, color = Color(0xFF38BDF8), fontSize = 10.sp)
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Cláudio Duski",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "PRO",
+                            color = Color(0xFF9E9E9E),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Normal,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            scope.launch { drawerState.close() }
+                            onItemClick(SettingsScreenKey)
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "Definições",
+                            tint = Color(0xFF9E9E9E),
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
                 }
             }
         }
     ) {
-        // Fundo Preto Puro com Gradiente Sutil (Design Gemini - Imagem 3)
+        // Fundo Preto Puro (Fiel à imagem de referência ChatGPT)
         Box(
             modifier = modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xFF000000),
-                            Color(0xFF000000),
-                            Color(0xFF030712),
-                            Color(0xFF0A1128)
-                        )
-                    )
-                )
+                .background(Color(0xFF000000))
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 90.dp) // Espaço para a barra inferior fixa
             ) {
-                // TOP BAR (☰ à esquerda, Gemini com Estrela no Centro, Avatar C à direita)
+                // TOP BAR (Fiel à imagem de referência: Botão "=" à esquerda, Cápsula [Novo Chat 📝 | Mais Opções ⋮] à direita)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                        .statusBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Menu Hamburger / Suspenso (Abre a janela lateral à esquerda)
-                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                        Icon(
-                            Icons.Default.Menu,
-                            contentDescription = "Menu Principal",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-
-                    // Título Central: Gemini com Estrela Sparkle
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        GeminiSparkleStar(sizeDp = 22.dp)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Gemini",
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White
-                        )
-                    }
-
-                    // Avatar do Usuário (Foto C) -> Ao clicar vai direto para as Definições
+                    // Botão circular com "=" à esquerda (abre menu lateral)
                     Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color(0xFF6366F1), Color(0xFF38BDF8))
-                                )
-                            )
-                            .clickable { onItemClick(SettingsScreenKey) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "C",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
-                    }
-                }
-
-            // CORPO CENTRAL: Estado Inicial com Estrela Gemini OU Exibição do Resultado
-            if (currentResult == null && !isLoading) {
-                // ESTADO INICIAL GEMINI (IMAGEM 3)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        // Estrela Multicolorida Gemini
-                        GeminiSparkleStar(sizeDp = 52.dp)
-
-                        Spacer(modifier = Modifier.height(28.dp))
-
-                        // Saudação elegante
-                        Text(
-                            text = "O que se segue,\nCláudio?",
-                            fontSize = 30.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = Color.White,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 38.sp
-                        )
-                    }
-                }
-            } else if (isLoading) {
-                // Loading
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = Color(0xFF38BDF8))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "A consultar o Gemini...",
-                            color = Color.LightGray,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-            } else {
-                // RESULTADO ATIVO DO ASSISTENTE
-                currentResult?.let { result ->
-                    val scrollState = rememberScrollState()
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp)
-                            .verticalScroll(scrollState),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2026)),
-                            shape = RoundedCornerShape(20.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(18.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = result.title.ifBlank { result.action.label },
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF38BDF8),
-                                        fontSize = 17.sp
-                                    )
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        // Ouvir TTS
-                                        IconButton(onClick = {
-                                            if (isTtsSpeaking) {
-                                                tts?.stop()
-                                                isTtsSpeaking = false
-                                            } else {
-                                                tts?.speak(result.resultText, TextToSpeech.QUEUE_FLUSH, null, "tts_id")
-                                                isTtsSpeaking = true
-                                            }
-                                        }) {
-                                            Icon(
-                                                if (isTtsSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp,
-                                                contentDescription = "Ouvir",
-                                                tint = Color.LightGray
-                                            )
-                                        }
-                                        // Copiar
-                                        IconButton(onClick = {
-                                            clipboardManager.setText(AnnotatedString(result.resultText))
-                                            Toast.makeText(context, "Copiado!", Toast.LENGTH_SHORT).show()
-                                        }) {
-                                            Icon(
-                                                Icons.Default.ContentCopy,
-                                                contentDescription = "Copiar",
-                                                tint = Color.LightGray
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                // Texto principal
-                                Text(
-                                    text = result.resultText,
-                                    color = Color(0xFFE2E8F0),
-                                    fontSize = 15.sp,
-                                    lineHeight = 22.sp
-                                )
-
-                                // Diagrama Mermaid
-                                if (!result.diagramCode.isNullOrBlank()) {
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Card(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF121418)),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Text("📊 Diagrama Mermaid:", color = Color(0xFFA855F7), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            Text(
-                                                text = result.diagramCode,
-                                                fontFamily = FontFamily.Monospace,
-                                                fontSize = 11.sp,
-                                                color = Color(0xFFA7F3D0)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                // Imagem IA Gerada
-                                if (!result.imageUrl.isNullOrBlank()) {
-                                    Spacer(modifier = Modifier.height(14.dp))
-                                    Card(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF13151B)),
-                                        shape = RoundedCornerShape(14.dp)
-                                    ) {
-                                        Column {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(Icons.Default.Image, contentDescription = null, tint = Color(0xFFEC4899), modifier = Modifier.size(16.dp))
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    Text("Imagem gerada por IA", color = Color(0xFFF472B6), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                                }
-                                            }
-
-                                            // Exibição da imagem em rede com loader
-                                            AsyncNetworkImage(
-                                                url = result.imageUrl,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-
-                                            // Ações da Imagem
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .background(Color(0xFF1C1E26))
-                                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                                horizontalArrangement = Arrangement.End,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Button(
-                                                    onClick = {
-                                                        clipboardManager.setText(AnnotatedString(result.imageUrl))
-                                                        Toast.makeText(context, "Link da imagem copiado!", Toast.LENGTH_SHORT).show()
-                                                    },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF272935)),
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    modifier = Modifier.height(34.dp)
-                                                ) {
-                                                    Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(14.dp))
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text("Copiar Link", color = Color.White, fontSize = 12.sp)
-                                                }
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Button(
-                                                    onClick = {
-                                                        try {
-                                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(result.imageUrl))
-                                                            context.startActivity(intent)
-                                                        } catch (e: Exception) {
-                                                            Toast.makeText(context, "Erro ao abrir navegador", Toast.LENGTH_SHORT).show()
-                                                        }
-                                                    },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDB2777)),
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    modifier = Modifier.height(34.dp)
-                                                ) {
-                                                    Icon(Icons.Default.OpenInNew, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text("Abrir em HD", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // PÍLULA FLUTUANTE INFERIOR (DESIGN EXATO GEMINI - IMAGEM 3)
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp)
-        ) {
-            // Banner de Status da Conversa Live Contínua por Voz
-            if (isLiveConversationMode) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 10.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(Color(0xFF0C1929))
-                        .border(1.dp, Color(0xFF0284C7), RoundedCornerShape(18.dp))
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            Icons.Default.Mic,
-                            contentDescription = null,
-                            tint = if (isListeningSpeech) Color(0xFF38BDF8) else Color(0xFFF59E0B),
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = when {
-                                isListeningSpeech -> "IA ouvindo... Fale a sua pergunta"
-                                isLoading -> "Gemini a processar resposta..."
-                                isTtsSpeaking -> "Gemini a responder por voz..."
-                                else -> "Modo de conversa ativo (aguardando fala)"
-                            },
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1
-                        )
-                    }
-                    Text(
-                        text = "Encerrar",
-                        color = Color(0xFFEF4444),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable {
-                                isLiveConversationMode = false
-                                stopTtsAudio()
-                                try {
-                                    speechRecognizer?.stopListening()
-                                } catch (_: Exception) {}
-                                isListeningSpeech = false
-                                Toast.makeText(context, "Conversa por voz encerrada", Toast.LENGTH_SHORT).show()
-                            }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(36.dp))
-                    .background(Color(0xFF1E2026))
-                    .border(1.dp, Color(0xFF2C2F38), RoundedCornerShape(36.dp))
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Botão "+" (Abre BottomSheet com as 8 opções modernas sem emojis)
-                IconButton(onClick = { showToolsSheet = true }) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = "Opções e Ferramentas",
-                        tint = Color(0xFFE2E8F0),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                // Campo de Texto Transparente "Pedir ao Gemini..."
-                BasicTextField(
-                    value = inputText,
-                    onValueChange = { inputText = it },
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 8.dp),
-                    textStyle = TextStyle(
-                        color = Color.White,
-                        fontSize = 16.sp
-                    ),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(
-                        onSend = {
-                            if (inputText.isNotBlank()) {
-                                executeAction(AssistantActionType.ASK, inputText, isLiveConversationMode)
-                            }
-                        }
-                    ),
-                    decorationBox = { innerTextField ->
-                        if (inputText.isEmpty()) {
-                            Text(
-                                text = if (isListeningSpeech) "Ouvindo voz em tempo real..." else "Pedir ao Gemini...",
-                                color = if (isListeningSpeech) Color(0xFF38BDF8) else Color(0xFF8E95A5),
-                                fontSize = 16.sp
-                            )
-                        }
-                        innerTextField()
-                    }
-                )
-
-                // Botão Microfone (Gravação / Transcrição com feedback visual e toggle de interrupção)
-                IconButton(
-                    onClick = {
-                        if (isListeningSpeech) {
-                            try {
-                                speechRecognizer?.stopListening()
-                            } catch (_: Exception) {}
-                            isListeningSpeech = false
-                            Toast.makeText(context, "Gravação de voz finalizada", Toast.LENGTH_SHORT).show()
-                        } else {
-                            startListening(false)
-                        }
-                    },
-                    modifier = if (isListeningSpeech) Modifier.clip(CircleShape).background(Color(0xFF0F2D4A)) else Modifier
-                ) {
-                    Icon(
-                        Icons.Default.Mic,
-                        contentDescription = if (isListeningSpeech) "Parar gravação" else "Entrada de Voz",
-                        tint = if (isListeningSpeech) Color(0xFF38BDF8) else Color(0xFFE2E8F0),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                // Se o usuário digitou texto, exibe a SETA DE ENVIAR; senão, exibe o botão Live de Conversa por Voz
-                if (inputText.isNotBlank()) {
-                    IconButton(
-                        onClick = {
-                            executeAction(AssistantActionType.ASK, inputText, isLiveConversationMode)
-                        },
                         modifier = Modifier
                             .size(42.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF1D51D8))
+                            .background(Color(0xFF212121))
+                            .clickable { scope.launch { drawerState.open() } },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "Enviar Mensagem",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(modifier = Modifier.width(16.dp).height(2.5.dp).background(Color.White, RoundedCornerShape(1.5.dp)))
+                            Box(modifier = Modifier.width(16.dp).height(2.5.dp).background(Color.White, RoundedCornerShape(1.5.dp)))
+                        }
                     }
-                } else {
-                    // Botão Azul com Ondas Sonoras Live ||| (Conversa Contínua por Voz / TTS)
-                    Box(
+
+                    // Cápsula superior direita [ Novo Chat 📝 | Mais Opções ⋮ ]
+                    Row(
                         modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(if (isLiveConversationMode || isListeningSpeech) Color(0xFF0284C7) else Color(0xFF1D51D8))
-                            .clickable {
-                                if (isLiveConversationMode) {
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(Color(0xFF212121))
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                chatMessages = emptyList()
+                                inputText = ""
+                                currentResult = null
+                                Toast.makeText(context, "Nova conversa iniciada", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Nova Conversa",
+                                tint = Color.White,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+
+                        var showTopMenu by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(
+                                onClick = { showTopMenu = true },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = "Mais opções",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showTopMenu,
+                                onDismissRequest = { showTopMenu = false },
+                                containerColor = Color(0xFF1E2128)
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Nova Conversa", color = Color.White) },
+                                    leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFF38BDF8)) },
+                                    onClick = {
+                                        showTopMenu = false
+                                        chatMessages = emptyList()
+                                        inputText = ""
+                                        currentResult = null
+                                        Toast.makeText(context, "Nova conversa iniciada", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Notas Inteligentes", color = Color.White) },
+                                    leadingIcon = { Icon(Icons.Default.Bookmarks, contentDescription = null, tint = Color(0xFF38BDF8)) },
+                                    onClick = {
+                                        showTopMenu = false
+                                        onItemClick(NotesScreenKey)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Definições", color = Color.White) },
+                                    leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null, tint = Color(0xFF38BDF8)) },
+                                    onClick = {
+                                        showTopMenu = false
+                                        onItemClick(SettingsScreenKey)
+                                    }
+                                )
+                                HorizontalDivider(color = Color(0xFF2C2F38))
+                                DropdownMenuItem(
+                                    text = { Text("Limpar Mensagens", color = Color(0xFFF87171)) },
+                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFF87171)) },
+                                    onClick = {
+                                        showTopMenu = false
+                                        chatMessages = emptyList()
+                                        inputText = ""
+                                        currentResult = null
+                                        Toast.makeText(context, "Conversa limpa", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // CORPO CENTRAL: FEED DA CONVERSA (Fiel à imagem de referência)
+                val listState = rememberLazyListState()
+
+                LaunchedEffect(chatMessages.size, isLoading) {
+                    val totalCount = chatMessages.size + if (isLoading) 1 else 0
+                    if (totalCount > 0) {
+                        listState.animateScrollToItem(totalCount - 1)
+                    }
+                }
+
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = 16.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 84.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(chatMessages, key = { it.id }) { msg ->
+                        if (msg.isUser) {
+                            UserMessageItem(text = msg.text)
+                        } else {
+                            AssistantMessageItem(
+                                message = msg,
+                                isTtsSpeaking = isTtsSpeaking,
+                                onSpeak = { speakText(msg.text, false) },
+                                onStopTts = stopTtsAudio,
+                                onOpenNotes = { onItemClick(NotesScreenKey) }
+                            )
+                        }
+                    }
+
+                    // Indicador animado durante a resposta da IA (Apenas os 3 pontos ● ● ●, SEM texto)
+                    if (isLoading) {
+                        item(key = "loading_dots_chat") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 6.dp, bottom = 10.dp),
+                                horizontalArrangement = Arrangement.Start
+                            ) {
+                                TypingBouncingDots(
+                                    dotSize = 6.5.dp,
+                                    dotColor = Color(0xFFE5E7EB),
+                                    spacing = 6.dp,
+                                    travelDistance = 5.5.dp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // BARRA INFERIOR (Cápsula flutuante fiel à imagem de referência: [+] [Responder ao ChatGPT] [🎤] [🔵||||])
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                // Banner de Status da Conversa Live Contínua por Voz (quando ativo)
+                if (isLiveConversationMode) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(Color(0xFF0C1929))
+                            .border(1.dp, Color(0xFF0284C7), RoundedCornerShape(18.dp))
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                Icons.Default.Mic,
+                                contentDescription = null,
+                                tint = if (isListeningSpeech) Color(0xFF38BDF8) else Color(0xFFF59E0B),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            if (isLoading) {
+                                // Sem nenhum texto! Apenas os 3 pontos animados
+                                TypingBouncingDots(
+                                    dotSize = 5.dp,
+                                    dotColor = Color(0xFF38BDF8),
+                                    spacing = 4.dp,
+                                    travelDistance = 3.5.dp
+                                )
+                            } else {
+                                Text(
+                                    text = when {
+                                        isListeningSpeech -> "IA ouvindo... Fale a sua pergunta"
+                                        isTtsSpeaking -> "IA a responder por voz..."
+                                        else -> "Modo conversa ativo (aguardando fala)"
+                                    },
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                        Text(
+                            text = "Encerrar",
+                            color = Color(0xFFEF4444),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
                                     isLiveConversationMode = false
                                     stopTtsAudio()
                                     try {
@@ -1300,19 +1331,138 @@ fun MainScreen(
                                     } catch (_: Exception) {}
                                     isListeningSpeech = false
                                     Toast.makeText(context, "Conversa por voz encerrada", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    isLiveConversationMode = true
-                                    startListening(true)
                                 }
-                            },
-                        contentAlignment = Alignment.Center
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                // Cápsula de Entrada de Mensagem
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(Color(0xFF212121))
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Botão "+" (Abre BottomSheet com as ferramentas do app)
+                    IconButton(
+                        onClick = { showToolsSheet = true },
+                        modifier = Modifier.size(38.dp)
                     ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(3.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "Opções e Ferramentas",
+                            tint = Color.White,
+                            modifier = Modifier.size(23.dp)
+                        )
+                    }
+
+                    // Campo de Texto Transparente "Responder ao ChatGPT"
+                    BasicTextField(
+                        value = inputText,
+                        onValueChange = { inputText = it },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp),
+                        textStyle = TextStyle(
+                            color = Color.White,
+                            fontSize = 15.5.sp
+                        ),
+                        cursorBrush = SolidColor(Color.White),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(
+                            onSend = {
+                                if (inputText.isNotBlank()) {
+                                    executeAction(AssistantActionType.ASK, inputText, isLiveConversationMode)
+                                }
+                            }
+                        ),
+                        decorationBox = { innerTextField ->
+                            if (inputText.isEmpty()) {
+                                Text(
+                                    text = if (isListeningSpeech) "A ouvir voz em tempo real..." else "Responder ao ChatGPT",
+                                    color = if (isListeningSpeech) Color(0xFF38BDF8) else Color(0xFF8E8E93),
+                                    fontSize = 15.5.sp
+                                )
+                            }
+                            innerTextField()
+                        }
+                    )
+
+                    if (inputText.isNotBlank()) {
+                        // Botão Azul de Enviar quando o usuário digita
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF2563EB))
+                                .clickable {
+                                    executeAction(AssistantActionType.ASK, inputText, isLiveConversationMode)
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(modifier = Modifier.width(3.dp).height(if (isListeningSpeech || isLiveConversationMode) 16.dp else 12.dp).background(Color.White, RoundedCornerShape(2.dp)))
-                            Box(modifier = Modifier.width(3.dp).height(if (isListeningSpeech || isLiveConversationMode) 22.dp else 18.dp).background(Color.White, RoundedCornerShape(2.dp)))
+                            Icon(
+                                Icons.AutoMirrored.Filled.Send,
+                                contentDescription = "Enviar Mensagem",
+                                tint = Color.White,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                    } else {
+                        // Estado inicial sem texto: Ícone do Microfone + Botão Azul com Ondas Sonoras (Live)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    if (isListeningSpeech) {
+                                        try {
+                                            speechRecognizer?.stopListening()
+                                        } catch (_: Exception) {}
+                                        isListeningSpeech = false
+                                        Toast.makeText(context, "Gravação finalizada", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        startListening(false)
+                                    }
+                                },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Mic,
+                                    contentDescription = if (isListeningSpeech) "Parar gravação" else "Entrada de Voz",
+                                    tint = if (isListeningSpeech) Color(0xFF38BDF8) else Color(0xFFE5E7EB),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF2563EB))
+                                    .clickable {
+                                        if (isLiveConversationMode) {
+                                            isLiveConversationMode = false
+                                            stopTtsAudio()
+                                            try {
+                                                speechRecognizer?.stopListening()
+                                            } catch (_: Exception) {}
+                                            isListeningSpeech = false
+                                            Toast.makeText(context, "Conversa por voz encerrada", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            isLiveConversationMode = true
+                                            startListening(true)
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                VoiceWaveformIcon(isLive = isLiveConversationMode)
+                            }
                         }
                     }
                 }
@@ -1384,8 +1534,6 @@ fun MainScreen(
                 Spacer(modifier = Modifier.height(24.dp))
             }
         }
-    }
-
     }
 }
 
@@ -1568,4 +1716,374 @@ fun AsyncNetworkImage(
             }
         }
     }
+}
+
+/**
+ * Modelo de Mensagem de Conversa para a interface
+ */
+data class ChatMessage(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val isUser: Boolean,
+    val text: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val result: AssistantResult? = null
+)
+
+/**
+ * Indicador animado minimalista de três pontos a balançar verticalmente (●  ●  ●).
+ * - Movimentos verticais alternados e dessincronizados de forma suave e contínua.
+ * - Leve, eficiente para Android e consumo de bateria.
+ * - Totalmente sem textos desnecessários.
+ */
+@Composable
+fun TypingBouncingDots(
+    modifier: Modifier = Modifier,
+    dotSize: Dp = 6.5.dp,
+    dotColor: Color = Color(0xFFE5E7EB),
+    spacing: Dp = 6.dp,
+    travelDistance: Dp = 5.5.dp
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "bouncing_dots_transition")
+    val delays = listOf(0, 160, 320)
+
+    val animations = delays.mapIndexed { index, delayMillis ->
+        infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 0f,
+            animationSpec = infiniteRepeatable(
+                animation = keyframes {
+                    durationMillis = 1100
+                    0f at 0 using FastOutSlowInEasing
+                    -1f at 280 using FastOutSlowInEasing
+                    0f at 560 using FastOutSlowInEasing
+                    0f at 1100 using LinearEasing
+                },
+                repeatMode = RepeatMode.Restart,
+                initialStartOffset = StartOffset(delayMillis)
+            ),
+            label = "dot_offset_$index"
+        )
+    }
+
+    Row(
+        modifier = modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(spacing),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        animations.forEach { anim ->
+            Box(
+                modifier = Modifier
+                    .offset(y = travelDistance * anim.value)
+                    .size(dotSize)
+                    .clip(CircleShape)
+                    .background(dotColor)
+            )
+        }
+    }
+}
+
+/**
+ * Ícone com 4 barras de ondas sonoras verticais (||||) do botão Live azul
+ */
+@Composable
+fun VoiceWaveformIcon(
+    isLive: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    if (!isLive) {
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(2.2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.width(2.dp).height(6.5.dp).background(Color.White, RoundedCornerShape(1.dp)))
+            Box(modifier = Modifier.width(2.dp).height(16.dp).background(Color.White, RoundedCornerShape(1.dp)))
+            Box(modifier = Modifier.width(2.dp).height(11.dp).background(Color.White, RoundedCornerShape(1.dp)))
+            Box(modifier = Modifier.width(2.dp).height(5.dp).background(Color.White, RoundedCornerShape(1.dp)))
+        }
+    } else {
+        val transition = rememberInfiniteTransition(label = "wave_pulsing")
+        val h1 by transition.animateFloat(
+            initialValue = 6f, targetValue = 14f,
+            animationSpec = infiniteRepeatable(tween(400, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "h1"
+        )
+        val h2 by transition.animateFloat(
+            initialValue = 17f, targetValue = 8f,
+            animationSpec = infiniteRepeatable(tween(450, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "h2"
+        )
+        val h3 by transition.animateFloat(
+            initialValue = 10f, targetValue = 18f,
+            animationSpec = infiniteRepeatable(tween(380, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "h3"
+        )
+        val h4 by transition.animateFloat(
+            initialValue = 5f, targetValue = 12f,
+            animationSpec = infiniteRepeatable(tween(420, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "h4"
+        )
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(2.2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.width(2.dp).height(h1.dp).background(Color.White, RoundedCornerShape(1.dp)))
+            Box(modifier = Modifier.width(2.dp).height(h2.dp).background(Color.White, RoundedCornerShape(1.dp)))
+            Box(modifier = Modifier.width(2.dp).height(h3.dp).background(Color.White, RoundedCornerShape(1.dp)))
+            Box(modifier = Modifier.width(2.dp).height(h4.dp).background(Color.White, RoundedCornerShape(1.dp)))
+        }
+    }
+}
+
+/**
+ * Balão de mensagem do Utilizador (Azul Escuro, alinhado à direita, cantos arredondados suaves)
+ */
+@Composable
+fun UserMessageItem(text: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.End
+    ) {
+        Box(
+            modifier = Modifier
+                .widthIn(max = 310.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(Color(0xFF0C1968))
+                .padding(horizontal = 18.dp, vertical = 11.dp)
+        ) {
+            Text(
+                text = text,
+                color = Color.White,
+                fontSize = 15.5.sp,
+                lineHeight = 22.sp
+            )
+        }
+    }
+}
+
+/**
+ * Mensagem da IA / Assistente (Diretamente sobre fundo preto, sem balão, tipografia limpa e barra de ações)
+ */
+@Composable
+fun AssistantMessageItem(
+    message: ChatMessage,
+    isTtsSpeaking: Boolean,
+    onSpeak: () -> Unit,
+    onStopTts: () -> Unit,
+    onOpenNotes: () -> Unit
+) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    var liked by remember { mutableStateOf<Boolean?>(null) }
+    var showMoreMenu by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 4.dp),
+        horizontalAlignment = Alignment.Start
+    ) {
+        // Texto da resposta com markdown e tipografia fiel à referência
+        Text(
+            text = parseMarkdownText(message.text),
+            color = Color(0xFFF9FAFB),
+            fontSize = 15.5.sp,
+            lineHeight = 23.sp
+        )
+
+        // Diagrama Mermaid se houver
+        message.result?.diagramCode?.takeIf { it.isNotBlank() }?.let { diagram ->
+            Spacer(modifier = Modifier.height(10.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF16181F)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Diagrama Mermaid", color = Color(0xFFA855F7), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = diagram,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        color = Color(0xFFA7F3D0)
+                    )
+                }
+            }
+        }
+
+        // Imagem IA gerada se houver
+        message.result?.imageUrl?.takeIf { it.isNotBlank() }?.let { imgUrl ->
+            Spacer(modifier = Modifier.height(12.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF16181F)),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Column {
+                    AsyncNetworkImage(
+                        url = imgUrl,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Barra de Ações (Fiel à imagem de referência: Copiar, Like, Dislike, Ouvir, Partilhar, Mais)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Copiar
+            IconButton(
+                onClick = {
+                    clipboardManager.setText(AnnotatedString(cleanMarkdown(message.text)))
+                    Toast.makeText(context, "Copiado para a área de transferência", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.size(26.dp)
+            ) {
+                Icon(
+                    Icons.Default.ContentCopy,
+                    contentDescription = "Copiar",
+                    tint = Color(0xFF9CA3AF),
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+
+            // Like / Thumbs Up
+            IconButton(
+                onClick = {
+                    liked = if (liked == true) null else true
+                    if (liked == true) Toast.makeText(context, "Obrigado pelo feedback!", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.size(26.dp)
+            ) {
+                Icon(
+                    if (liked == true) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+                    contentDescription = "Gostei",
+                    tint = if (liked == true) Color(0xFF38BDF8) else Color(0xFF9CA3AF),
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+
+            // Dislike / Thumbs Down
+            IconButton(
+                onClick = {
+                    liked = if (liked == false) null else false
+                    if (liked == false) Toast.makeText(context, "Feedback registado", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.size(26.dp)
+            ) {
+                Icon(
+                    if (liked == false) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown,
+                    contentDescription = "Não gostei",
+                    tint = if (liked == false) Color(0xFFF87171) else Color(0xFF9CA3AF),
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+
+            // Ouvir por voz / TTS
+            IconButton(
+                onClick = {
+                    if (isTtsSpeaking) onStopTts() else onSpeak()
+                },
+                modifier = Modifier.size(26.dp)
+            ) {
+                Icon(
+                    if (isTtsSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp,
+                    contentDescription = "Ouvir",
+                    tint = if (isTtsSpeaking) Color(0xFF38BDF8) else Color(0xFF9CA3AF),
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+
+            // Partilhar
+            IconButton(
+                onClick = {
+                    try {
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, cleanMarkdown(message.text))
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Partilhar resposta"))
+                    } catch (_: Exception) {}
+                },
+                modifier = Modifier.size(26.dp)
+            ) {
+                Icon(
+                    Icons.Default.Share,
+                    contentDescription = "Partilhar",
+                    tint = Color(0xFF9CA3AF),
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+
+            // Mais opções
+            Box {
+                IconButton(
+                    onClick = { showMoreMenu = true },
+                    modifier = Modifier.size(26.dp)
+                ) {
+                    Icon(
+                        Icons.Default.MoreVert,
+                        contentDescription = "Mais opções",
+                        tint = Color(0xFF9CA3AF),
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+                DropdownMenu(
+                    expanded = showMoreMenu,
+                    onDismissRequest = { showMoreMenu = false },
+                    containerColor = Color(0xFF1E2128)
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Copiar texto", color = Color.White, fontSize = 13.sp) },
+                        onClick = {
+                            showMoreMenu = false
+                            clipboardManager.setText(AnnotatedString(cleanMarkdown(message.text)))
+                            Toast.makeText(context, "Copiado!", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Guardar nas Notas", color = Color.White, fontSize = 13.sp) },
+                        onClick = {
+                            showMoreMenu = false
+                            onOpenNotes()
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Converte marcação markdown com **negrito** para AnnotatedString estilizada com FontWeight.Bold
+ */
+fun parseMarkdownText(text: String): AnnotatedString {
+    return buildAnnotatedString {
+        val parts = text.split("**")
+        for (i in parts.indices) {
+            if (i % 2 == 1) {
+                pushStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White))
+                append(parts[i])
+                pop()
+            } else {
+                append(parts[i])
+            }
+        }
+    }
+}
+
+/**
+ * Remove caracteres de markdown para leitura fluida de TTS e cópia simples
+ */
+fun cleanMarkdown(text: String): String {
+    return text.replace(Regex("""[#*`_]"""), "").trim()
 }

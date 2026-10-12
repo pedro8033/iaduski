@@ -91,4 +91,25 @@ describe('Sistema de Blocos de Notas Inteligentes - Endpoints /api/notes', () =>
     expect(checkNote.status).toBe(200);
     expect(checkNote.body.note.categoryId).toBeNull();
   });
+
+  it('retorna os modelos de notas incluindo o modelo padrão e o novo modelo de tabela médica', async () => {
+    const res = await request(app).get('/api/notes/templates');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.templates)).toBe(true);
+
+    // O modelo original deve permanecer intacto
+    const defaultTemplate = res.body.templates.find((t: any) => t.id === 'default_blank');
+    expect(defaultTemplate).toBeDefined();
+
+    // O novo modelo anexado deve estar presente
+    const surgicalTemplate = res.body.templates.find((t: any) => t.id === 'surgical_terminology_table');
+    expect(surgicalTemplate).toBeDefined();
+    expect(surgicalTemplate.title).toBe('Segundo Elemento e Significado');
+    expect(surgicalTemplate.content).toContain('Segundo elemento');
+    expect(surgicalTemplate.content).toContain('Significado');
+    expect(surgicalTemplate.content).toContain('-algia/algo');
+    expect(surgicalTemplate.content).toContain('-tomia');
+    expect(surgicalTemplate.color).toBe('#c84b15');
+  });
 });
