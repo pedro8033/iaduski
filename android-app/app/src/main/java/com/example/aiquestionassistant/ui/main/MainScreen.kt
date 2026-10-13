@@ -621,48 +621,7 @@ fun MainScreen(
                     }
                 }
 
-                // 3. Spark BETA
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            scope.launch { drawerState.close() }
-                            showToolsSheet = true
-                        }
-                        .padding(horizontal = 22.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.AutoAwesome,
-                        contentDescription = "Spark",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(modifier = Modifier.width(18.dp))
-                    Text(
-                        text = "Spark",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Normal
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF262626))
-                            .padding(horizontal = 5.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "BETA",
-                            color = Color(0xFF9E9E9E),
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        )
-                    }
-                }
-
-                // 4. Estudantes
+                // 3. Estudantes
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -682,58 +641,6 @@ fun MainScreen(
                     Spacer(modifier = Modifier.width(18.dp))
                     Text(
                         text = "Estudantes",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Normal
-                    )
-                }
-
-                // 5. Imagens
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            scope.launch { drawerState.close() }
-                            executeAction(AssistantActionType.IMAGE, null, false)
-                        }
-                        .padding(horizontal = 22.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Image,
-                        contentDescription = "Imagens",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(modifier = Modifier.width(18.dp))
-                    Text(
-                        text = "Imagens",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Normal
-                    )
-                }
-
-                // 6. Vídeos
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            scope.launch { drawerState.close() }
-                            showToolsSheet = true
-                        }
-                        .padding(horizontal = 22.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Videocam,
-                        contentDescription = "Vídeos",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(modifier = Modifier.width(18.dp))
-                    Text(
-                        text = "Vídeos",
                         color = Color.White,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Normal
@@ -865,31 +772,6 @@ fun MainScreen(
                     }
                 }
 
-                // + Novo notebook
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            scope.launch { drawerState.close() }
-                            onItemClick(NoteEditorKey(null))
-                        }
-                        .padding(horizontal = 22.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = "+ Novo notebook",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(modifier = Modifier.width(18.dp))
-                    Text(
-                        text = "Novo notebook",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Normal
-                    )
-                }
 
                 // Lista de Itens Rolável
                 val filteredHistory = remember(historyItems, historySearchQuery) {
