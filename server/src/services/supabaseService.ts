@@ -1,4 +1,11 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
+
+// Garantir que WebSocket esteja disponível globalmente no ambiente Node.js (Node 20 / 22)
+if (typeof globalThis.WebSocket === 'undefined') {
+  // @ts-ignore
+  globalThis.WebSocket = WebSocket;
+}
 
 export interface SupabaseConfig {
   url: string;
@@ -23,20 +30,21 @@ export class SupabaseService {
     this.serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
     if (this.url && this.anonKey) {
-      this.client = createClient(this.url, this.anonKey, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-        },
-      });
+      try {
+        const clientOptions = {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+          },
+        };
 
-      const adminSecret = this.serviceRoleKey || this.anonKey;
-      this.adminClient = createClient(this.url, adminSecret, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-        },
-      });
+        this.client = createClient(this.url, this.anonKey, clientOptions);
+
+        const adminSecret = this.serviceRoleKey || this.anonKey;
+        this.adminClient = createClient(this.url, adminSecret, clientOptions);
+      } catch (err) {
+        console.warn('[SupabaseService] Erro ao inicializar cliente Supabase:', err);
+      }
     }
   }
 
