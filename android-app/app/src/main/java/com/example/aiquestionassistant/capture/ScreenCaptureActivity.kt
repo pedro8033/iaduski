@@ -27,8 +27,10 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.aiquestionassistant.service.FloatingBubbleService
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +47,7 @@ class ScreenCaptureActivity : ComponentActivity() {
     private var imageReader: ImageReader? = null
     private var capturedBitmap: Bitmap? = null
     private var captureThread: HandlerThread? = null
+    private var cropPreviewOverlay: FrameLayout? = null
 
     private val isCaptured = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -56,15 +59,32 @@ class ScreenCaptureActivity : ComponentActivity() {
         val resultCode = result.resultCode
         val data = result.data
         if (resultCode == RESULT_OK && data != null) {
-            // Em Android 14+ (API 34+), o serviço em primeiro plano precisa do tipo mediaProjection
-            FloatingBubbleService.instance?.enableMediaProjectionForeground()
-            // Esconde a bolha temporariamente para não aparecer no print
-            FloatingBubbleService.instance?.setBubbleVisibility(false)
+            try {
+                // Em Android 14+ (API 34+), o serviço em primeiro plano precisa do tipo mediaProjection
+                if (FloatingBubbleService.instance == null) {
+                    val serviceIntent = Intent(this, FloatingBubbleService::class.java).apply {
+                        putExtra("enable_projection", true)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        ContextCompat.startForegroundService(this, serviceIntent)
+                    } else {
+                        startService(serviceIntent)
+                    }
+                } else {
+                    FloatingBubbleService.instance?.enableMediaProjectionForeground()
+                }
 
-            // Breve intervalo para garantir que as janelas foram desenhadas
-            mainHandler.postDelayed({
-                startScreenCapture(resultCode, data)
-            }, 160)
+                // Esconde a bolha temporariamente para não aparecer no print
+                FloatingBubbleService.instance?.setBubbleVisibility(false)
+
+                // Intervalo para o foreground service promover e a tela estabilizar
+                mainHandler.postDelayed({
+                    startScreenCapture(resultCode, data)
+                }, 250)
+            } catch (t: Throwable) {
+                t.printStackTrace()
+                handleCaptureFailure("Erro ao inicializar captura: ${t.message}")
+            }
         } else {
             FloatingBubbleService.instance?.disableMediaProjectionForeground()
             FloatingBubbleService.instance?.setBubbleVisibility(true)
@@ -97,92 +117,122 @@ class ScreenCaptureActivity : ComponentActivity() {
     }
 
     private fun startScreenCapture(resultCode: Int, data: android.content.Intent) {
-        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val (width, height, density) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val bounds = windowManager.currentWindowMetrics.bounds
-            Triple(bounds.width(), bounds.height(), resources.configuration.densityDpi)
-        } else {
-            val metrics = DisplayMetrics()
-            @Suppress("DEPRECATION")
-            windowManager.defaultDisplay.getRealMetrics(metrics)
-            Triple(metrics.widthPixels, metrics.heightPixels, metrics.densityDpi)
-        }
-
-        // Thread em segundo plano dedicada para processamento de buffer gráfico
-        captureThread = HandlerThread("ScreenCaptureThread").apply { start() }
-        val backgroundHandler = Handler(captureThread!!.looper)
-
-        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
-        mediaProjection = mediaProjectionManager?.getMediaProjection(resultCode, data)
-
-        if (mediaProjection == null) {
-            handleCaptureFailure("Falha ao obter permissão de projeção do ecrã")
-            return
-        }
-
-        // Android 14+ exige estritamente o registo de callback antes de criar o VirtualDisplay
-        mediaProjection?.registerCallback(object : MediaProjection.Callback() {
-            override fun onStop() {
-                super.onStop()
-                stopProjection()
+        try {
+            val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            val (width, height, density) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val bounds = windowManager.currentWindowMetrics.bounds
+                Triple(bounds.width(), bounds.height(), resources.configuration.densityDpi)
+            } else {
+                val metrics = DisplayMetrics()
+                @Suppress("DEPRECATION")
+                windowManager.defaultDisplay.getRealMetrics(metrics)
+                Triple(metrics.widthPixels, metrics.heightPixels, metrics.densityDpi)
             }
-        }, backgroundHandler)
 
-        // Timeout de segurança (3.5s) caso o ecrã esteja estático ou o sistema bloqueie
-        timeoutHandler.postDelayed({
-            if (isCaptured.compareAndSet(false, true)) {
-                stopProjection()
-                handleCaptureFailure("Tempo limite excedido na captura do ecrã")
+            if (width <= 0 || height <= 0) {
+                handleCaptureFailure("Dimensões do ecrã inválidas")
+                return
             }
-        }, 3500)
 
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "ScreenCapture",
-            width, height, density,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader?.surface, null, backgroundHandler
-        )
+            // Thread em segundo plano dedicada para processamento de buffer gráfico
+            captureThread = HandlerThread("ScreenCaptureThread").apply { start() }
+            val backgroundHandler = Handler(captureThread!!.looper)
 
-        imageReader?.setOnImageAvailableListener({ reader ->
-            val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
-            try {
-                if (isCaptured.compareAndSet(false, true)) {
-                    timeoutHandler.removeCallbacksAndMessages(null)
+            imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+            mediaProjection = mediaProjectionManager?.getMediaProjection(resultCode, data)
 
-                    val planes = image.planes
-                    val buffer = planes[0].buffer
-                    val pixelStride = planes[0].pixelStride
-                    val rowStride = planes[0].rowStride
-                    val rowPadding = rowStride - pixelStride * width
+            if (mediaProjection == null) {
+                handleCaptureFailure("Falha ao obter permissão de projeção do ecrã")
+                return
+            }
 
-                    val rawBitmap = Bitmap.createBitmap(
-                        width + rowPadding / pixelStride,
-                        height,
-                        Bitmap.Config.ARGB_8888
-                    )
-                    rawBitmap.copyPixelsFromBuffer(buffer)
-                    val cleanBitmap = Bitmap.createBitmap(rawBitmap, 0, 0, width, height)
-                    if (rawBitmap != cleanBitmap) {
-                        rawBitmap.recycle()
-                    }
-                    capturedBitmap = cleanBitmap
-
-                    // Para a projeção imediatamente para libertar recursos de hardware
+            // Android 14+ exige estritamente o registo de callback antes de criar o VirtualDisplay
+            mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+                override fun onStop() {
+                    super.onStop()
                     stopProjection()
+                }
+            }, backgroundHandler)
 
+            // Timeout de segurança (4s) caso o ecrã esteja estático ou o sistema bloqueie
+            timeoutHandler.postDelayed({
+                if (isCaptured.compareAndSet(false, true)) {
+                    stopProjection()
+                    handleCaptureFailure("Tempo limite excedido na captura do ecrã")
+                }
+            }, 4000)
+
+            virtualDisplay = mediaProjection?.createVirtualDisplay(
+                "ScreenCapture",
+                width, height, density,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                imageReader?.surface, null, backgroundHandler
+            )
+
+            imageReader?.setOnImageAvailableListener({ reader ->
+                try {
+                    val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
+                    try {
+                        if (isCaptured.compareAndSet(false, true)) {
+                            timeoutHandler.removeCallbacksAndMessages(null)
+
+                            val planes = image.planes
+                            if (planes.isEmpty()) {
+                                mainHandler.post {
+                                    handleCaptureFailure("Buffer de imagem não disponível")
+                                }
+                                return@setOnImageAvailableListener
+                            }
+                            val buffer = planes[0].buffer
+                            val pixelStride = planes[0].pixelStride
+                            val rowStride = planes[0].rowStride
+                            if (pixelStride <= 0) {
+                                mainHandler.post {
+                                    handleCaptureFailure("Estrutura de píxeis incompatível")
+                                }
+                                return@setOnImageAvailableListener
+                            }
+                            val rowPadding = rowStride - pixelStride * width
+
+                            val bmpWidth = (width + rowPadding / pixelStride).coerceAtLeast(1)
+                            val rawBitmap = Bitmap.createBitmap(
+                                bmpWidth,
+                                height,
+                                Bitmap.Config.ARGB_8888
+                            )
+                            rawBitmap.copyPixelsFromBuffer(buffer)
+                            val cleanBitmap = Bitmap.createBitmap(rawBitmap, 0, 0, width.coerceAtMost(rawBitmap.width), height.coerceAtMost(rawBitmap.height))
+                            if (rawBitmap != cleanBitmap) {
+                                rawBitmap.recycle()
+                            }
+                            capturedBitmap = cleanBitmap
+
+                            // Para a projeção imediatamente para libertar recursos de hardware
+                            stopProjection()
+
+                            mainHandler.post {
+                                showCropOverlay(cleanBitmap)
+                            }
+                        }
+                    } finally {
+                        try {
+                            image.close()
+                        } catch (_: Exception) {}
+                    }
+                } catch (e: Throwable) {
+                    e.printStackTrace()
                     mainHandler.post {
-                        showCropOverlay(cleanBitmap)
+                        handleCaptureFailure("Erro ao extrair imagem do ecrã: ${e.message}")
                     }
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                mainHandler.post {
-                    handleCaptureFailure("Erro ao extrair imagem do ecrã: ${e.message}")
-                }
-            } finally {
-                image.close()
-            }
-        }, backgroundHandler)
+            }, backgroundHandler)
+        } catch (e: SecurityException) {
+            e.printStackTrace()
+            handleCaptureFailure("Permissão de projeção negada pelo sistema: ${e.message}")
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            handleCaptureFailure("Erro ao iniciar captura do ecrã: ${t.message}")
+        }
     }
 
     private fun showCropOverlay(cleanBitmap: Bitmap) {
@@ -304,8 +354,6 @@ class ScreenCaptureActivity : ComponentActivity() {
             return
         }
 
-        Toast.makeText(this, "A otimizar captura...", Toast.LENGTH_SHORT).show()
-
         val viewW = window.decorView.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
         val viewH = window.decorView.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
 
@@ -322,26 +370,207 @@ class ScreenCaptureActivity : ComponentActivity() {
             listOf(left, top, w, h)
         }
 
-        lifecycleScope.launch(Dispatchers.Default) {
-            try {
-                val croppedBitmap = if (isFullScreen || (cropX == 0 && cropY == 0 && cropW == fullBmp.width && cropH == fullBmp.height)) {
-                    fullBmp
-                } else {
-                    Bitmap.createBitmap(fullBmp, cropX, cropY, cropW, cropH)
+        try {
+            val croppedBitmap = if (isFullScreen || (cropX == 0 && cropY == 0 && cropW == fullBmp.width && cropH == fullBmp.height)) {
+                fullBmp
+            } else {
+                Bitmap.createBitmap(fullBmp, cropX, cropY, cropW, cropH)
+            }
+            showCroppedPreviewConfirmation(croppedBitmap, isFullScreen)
+        } catch (e: Throwable) {
+            e.printStackTrace()
+            handleCaptureFailure("Erro ao recortar imagem: ${e.message}")
+        }
+    }
+
+    private fun showCroppedPreviewConfirmation(croppedBmp: Bitmap, isFullScreen: Boolean) {
+        val root = findViewById<ViewGroup>(android.R.id.content) ?: return
+        cropPreviewOverlay?.let { root.removeView(it) }
+
+        val overlay = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(Color.parseColor("#B3000000"))
+            isClickable = true
+            isFocusable = true
+        }
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                cornerRadius = dpToPx(20f)
+                setColor(Color.parseColor("#F5090D16"))
+                setStroke(dpToPx(1.5f).toInt(), Color.parseColor("#38BDF8"))
+            }
+            val pad = dpToPx(16f).toInt()
+            setPadding(pad, pad, pad, pad)
+            elevation = dpToPx(16f)
+        }
+
+        // Cabeçalho da pré-visualização
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+
+            val icon = ImageView(context).apply {
+                setImageResource(com.example.aiquestionassistant.R.drawable.ic_camera)
+                setColorFilter(Color.parseColor("#38BDF8"))
+            }
+            addView(icon, LinearLayout.LayoutParams(dpToPx(22f).toInt(), dpToPx(22f).toInt()).apply {
+                setMargins(0, 0, dpToPx(8f).toInt(), 0)
+            })
+
+            val titleCol = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+
+                val title = TextView(context).apply {
+                    text = if (isFullScreen) "Pré-visualização (Ecrã Inteiro)" else "Pré-visualização do Corte"
+                    setTextColor(Color.WHITE)
+                    textSize = 15f
+                    typeface = Typeface.DEFAULT_BOLD
+                }
+                addView(title)
+
+                val subtitle = TextView(context).apply {
+                    text = "${croppedBmp.width} × ${croppedBmp.height} px • Pronto para a IA"
+                    setTextColor(Color.parseColor("#94A3B8"))
+                    textSize = 11f
+                }
+                addView(subtitle)
+            }
+            addView(titleCol, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        card.addView(header)
+
+        // Moldura para imagem recortada
+        val imageContainer = FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                cornerRadius = dpToPx(12f)
+                setColor(Color.parseColor("#0B0F19"))
+                setStroke(dpToPx(1f).toInt(), Color.parseColor("#1E293B"))
+            }
+            clipToOutline = true
+        }
+
+        val previewImageView = ImageView(this).apply {
+            setImageBitmap(croppedBmp)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+        }
+        val maxImgHeight = (resources.displayMetrics.heightPixels * 0.42).toInt().coerceAtLeast(dpToPx(180f).toInt())
+        imageContainer.addView(previewImageView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.CENTER
+        })
+
+        card.addView(imageContainer, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            setMargins(0, dpToPx(12f).toInt(), 0, dpToPx(14f).toInt())
+            height = maxImgHeight
+        })
+
+        // Linha com Botões de Ação
+        val buttonsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+
+            // Botão Recortar Novamente
+            val btnRetake = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    cornerRadius = dpToPx(12f)
+                    setColor(Color.parseColor("#1E293B"))
+                    setStroke(dpToPx(1f).toInt(), Color.parseColor("#475569"))
+                }
+                setPadding(dpToPx(12f).toInt(), dpToPx(10f).toInt(), dpToPx(12f).toInt(), dpToPx(10f).toInt())
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    root.removeView(overlay)
+                    cropPreviewOverlay = null
+                    if (croppedBmp != capturedBitmap) {
+                        croppedBmp.recycle()
+                    }
                 }
 
-                // Otimização de resolução: modelos de IA leem perfeitamente até 1600px
-                // Reduz tamanho de base64 de ~3MB para ~180KB, acelerando o envio em 10x
-                val maxDim = maxOf(croppedBitmap.width, croppedBitmap.height)
+                val retakeLabel = TextView(context).apply {
+                    text = "↺ Recortar"
+                    setTextColor(Color.parseColor("#E2E8F0"))
+                    textSize = 13f
+                    typeface = Typeface.DEFAULT_BOLD
+                }
+                addView(retakeLabel)
+            }
+            addView(btnRetake, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(0, 0, dpToPx(8f).toInt(), 0)
+            })
+
+            // Botão Confirmar e Enviar para IA
+            val btnConfirm = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    cornerRadius = dpToPx(12f)
+                    setColor(Color.parseColor("#0284C7"))
+                }
+                setPadding(dpToPx(14f).toInt(), dpToPx(10f).toInt(), dpToPx(14f).toInt(), dpToPx(10f).toInt())
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    root.removeView(overlay)
+                    cropPreviewOverlay = null
+                    dispatchOptimizedImage(croppedBmp)
+                }
+
+                val confirmLabel = TextView(context).apply {
+                    text = "✓ Confirmar e Enviar"
+                    setTextColor(Color.WHITE)
+                    textSize = 13f
+                    typeface = Typeface.DEFAULT_BOLD
+                }
+                addView(confirmLabel)
+            }
+            addView(btnConfirm, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.4f))
+        }
+        card.addView(buttonsRow)
+
+        val cardParams = FrameLayout.LayoutParams(
+            (resources.displayMetrics.widthPixels * 0.92).toInt().coerceAtMost(dpToPx(480f).toInt()),
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.CENTER
+        }
+        overlay.addView(card, cardParams)
+
+        cropPreviewOverlay = overlay
+        root.addView(overlay)
+    }
+
+    private fun dispatchOptimizedImage(bitmapToProcess: Bitmap) {
+        Toast.makeText(this, "A preparar captura para a IA...", Toast.LENGTH_SHORT).show()
+
+        lifecycleScope.launch(Dispatchers.Default) {
+            try {
+                val fullBmp = capturedBitmap
+                val maxDim = maxOf(bitmapToProcess.width, bitmapToProcess.height)
                 val optimizedBitmap = if (maxDim > 1600) {
                     val scale = 1600f / maxDim
-                    val targetW = (croppedBitmap.width * scale).toInt().coerceAtLeast(1)
-                    val targetH = (croppedBitmap.height * scale).toInt().coerceAtLeast(1)
-                    val scaled = Bitmap.createScaledBitmap(croppedBitmap, targetW, targetH, true)
-                    if (croppedBitmap != fullBmp) croppedBitmap.recycle()
+                    val targetW = (bitmapToProcess.width * scale).toInt().coerceAtLeast(1)
+                    val targetH = (bitmapToProcess.height * scale).toInt().coerceAtLeast(1)
+                    val scaled = Bitmap.createScaledBitmap(bitmapToProcess, targetW, targetH, true)
+                    if (bitmapToProcess != fullBmp && bitmapToProcess != scaled) {
+                        bitmapToProcess.recycle()
+                    }
                     scaled
                 } else {
-                    croppedBitmap
+                    bitmapToProcess
                 }
 
                 val outputStream = ByteArrayOutputStream()
@@ -349,17 +578,30 @@ class ScreenCaptureActivity : ComponentActivity() {
                 val byteArray = outputStream.toByteArray()
                 val base64 = Base64.encodeToString(byteArray, Base64.NO_WRAP)
 
-                if (optimizedBitmap != fullBmp) optimizedBitmap.recycle()
+                if (optimizedBitmap != fullBmp) {
+                    optimizedBitmap.recycle()
+                }
 
                 withContext(Dispatchers.Main) {
-                    FloatingBubbleService.instance?.let { service ->
-                        service.disableMediaProjectionForeground()
-                        service.setBubbleVisibility(true)
-                        service.processCapturedImage(base64)
+                    if (FloatingBubbleService.instance != null) {
+                        FloatingBubbleService.instance?.let { service ->
+                            service.disableMediaProjectionForeground()
+                            service.setBubbleVisibility(true)
+                            service.processCapturedImage(base64)
+                        }
+                    } else {
+                        val serviceIntent = Intent(this@ScreenCaptureActivity, FloatingBubbleService::class.java).apply {
+                            putExtra("shared_image", base64)
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            ContextCompat.startForegroundService(this@ScreenCaptureActivity, serviceIntent)
+                        } else {
+                            startService(serviceIntent)
+                        }
                     }
                     finish()
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
                 withContext(Dispatchers.Main) {
                     handleCaptureFailure("Erro ao otimizar imagem: ${e.message}")
@@ -390,14 +632,24 @@ class ScreenCaptureActivity : ComponentActivity() {
     private fun stopProjection() {
         try {
             virtualDisplay?.release()
-            virtualDisplay = null
-            imageReader?.close()
-            imageReader = null
-            mediaProjection?.stop()
-            mediaProjection = null
         } catch (e: Exception) {
             e.printStackTrace()
         }
+        virtualDisplay = null
+
+        try {
+            imageReader?.close()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        imageReader = null
+
+        try {
+            mediaProjection?.stop()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        mediaProjection = null
     }
 
     private fun cleanupThread() {

@@ -58,9 +58,39 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.util.Base64
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Image
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.filled.BorderColor
+import androidx.compose.material.icons.filled.FormatColorText
+import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
+import androidx.compose.material.icons.filled.TextIncrease
+import androidx.compose.material.icons.filled.TextDecrease
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -132,6 +162,9 @@ fun NoteEditorScreen(
     // Sheets e Diálogos
     var showAiSheet by remember { mutableStateOf(false) }
     var showColorPaletteSheet by remember { mutableStateOf(false) }
+    var showTextColorSheet by remember { mutableStateOf(false) }
+    var showTextSizeSheet by remember { mutableStateOf(false) }
+    var editorFontSizeSp by remember { mutableStateOf(16f) }
     var showCategorySheet by remember { mutableStateOf(false) }
     var showTagDialog by remember { mutableStateOf(false) }
     var newTagInput by remember { mutableStateOf("") }
@@ -140,6 +173,80 @@ fun NoteEditorScreen(
     var aiPreviewResult by remember { mutableStateOf<Pair<NoteAiAction, String>?>(null) }
     var isAiProcessing by remember { mutableStateOf(false) }
     var isPreviewMode by remember { mutableStateOf(false) }
+
+    // Launcher para Tirar Foto com a Câmera diretamente
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        if (bitmap != null) {
+            try {
+                val mediaDir = File(context.filesDir, "notes_media").apply { mkdirs() }
+                val imageFile = File(mediaDir, "cam_${System.currentTimeMillis()}.jpg")
+                imageFile.outputStream().use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
+                }
+                val path = imageFile.absolutePath
+                val insertText = if (contentValue.text.isBlank() || contentValue.text.endsWith("\n\n")) {
+                    "![Foto da Câmera]($path)\n\n"
+                } else if (contentValue.text.endsWith("\n")) {
+                    "\n![Foto da Câmera]($path)\n\n"
+                } else {
+                    "\n\n![Foto da Câmera]($path)\n\n"
+                }
+                val sel = contentValue.selection
+                val original = contentValue.text
+                val start = sel.start.coerceIn(0, original.length)
+                val end = sel.end.coerceIn(0, original.length)
+                val before = original.substring(0, start)
+                val after = original.substring(end)
+                val newText = before + insertText + after
+                val newCursor = start + insertText.length
+                contentValue = TextFieldValue(newText, TextRange(newCursor))
+                Toast.makeText(context, "Foto da câmera inserida na nota!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, "Erro ao processar foto: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // Launcher para Inserir Foto da Galeria / Ficheiros
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val mediaDir = File(context.filesDir, "notes_media").apply { mkdirs() }
+                val imageFile = File(mediaDir, "gallery_${System.currentTimeMillis()}.jpg")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    imageFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                val path = imageFile.absolutePath
+                val insertText = if (contentValue.text.isBlank() || contentValue.text.endsWith("\n\n")) {
+                    "![Foto]($path)\n\n"
+                } else if (contentValue.text.endsWith("\n")) {
+                    "\n![Foto]($path)\n\n"
+                } else {
+                    "\n\n![Foto]($path)\n\n"
+                }
+                val sel = contentValue.selection
+                val original = contentValue.text
+                val start = sel.start.coerceIn(0, original.length)
+                val end = sel.end.coerceIn(0, original.length)
+                val before = original.substring(0, start)
+                val after = original.substring(end)
+                val newText = before + insertText + after
+                val newCursor = start + insertText.length
+                contentValue = TextFieldValue(newText, TextRange(newCursor))
+                Toast.makeText(context, "Foto adicionada à nota!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, "Erro ao carregar foto: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     // Carregar Nota existente
     LaunchedEffect(noteId) {
@@ -294,80 +401,158 @@ fun NoteEditorScreen(
                 }
             }
 
-            // BARRA DE FORMATAÇÃO RICA RÁPIDA (Markdown / Negrito / Listas / etc.)
+            // BARRA DE FORMATAÇÃO RICA RÁPIDA (Negrito, Itálico, Destacar, Cor, Tamanho, Listas, Tabelas)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0xFF141416))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 5.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Negrito
-                IconButton(onClick = {
-                    val sel = contentValue.selection
-                    val text = contentValue.text
-                    val before = text.substring(0, sel.start)
-                    val selected = text.substring(sel.start, sel.end)
-                    val after = text.substring(sel.end)
-                    val newText = "$before**$selected**$after"
-                    contentValue = TextFieldValue(newText, TextRange(sel.start + 2, sel.end + 2))
-                }, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.FormatBold, contentDescription = "Negrito", tint = Color.LightGray, modifier = Modifier.size(18.dp))
+                // 1. Negrito
+                IconButton(
+                    onClick = {
+                        contentValue = applyWrapOrInsert(contentValue, "**", "**", "texto em negrito")
+                    },
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(Icons.Default.FormatBold, contentDescription = "Negrito", tint = Color.White, modifier = Modifier.size(19.dp))
                 }
 
-                // Itálico
-                IconButton(onClick = {
-                    val sel = contentValue.selection
-                    val text = contentValue.text
-                    val before = text.substring(0, sel.start)
-                    val selected = text.substring(sel.start, sel.end)
-                    val after = text.substring(sel.end)
-                    val newText = "$before*$selected*$after"
-                    contentValue = TextFieldValue(newText, TextRange(sel.start + 1, sel.end + 1))
-                }, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.FormatItalic, contentDescription = "Itálico", tint = Color.LightGray, modifier = Modifier.size(18.dp))
+                // 2. Itálico
+                IconButton(
+                    onClick = {
+                        contentValue = applyWrapOrInsert(contentValue, "*", "*", "texto em itálico")
+                    },
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(Icons.Default.FormatItalic, contentDescription = "Itálico", tint = Color.LightGray, modifier = Modifier.size(19.dp))
                 }
 
-                // Título (Heading)
+                // 3. Destacar Texto (Highlight)
+                IconButton(
+                    onClick = {
+                        contentValue = applyWrapOrInsert(contentValue, "==", "==", "texto destacado")
+                    },
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFFFEF08A).copy(alpha = 0.2f))
+                ) {
+                    Icon(Icons.Default.BorderColor, contentDescription = "Destacar Texto", tint = Color(0xFFFDE047), modifier = Modifier.size(18.dp))
+                }
+
+                // 4. Mudar de Cor do Texto
+                IconButton(
+                    onClick = { showTextColorSheet = true },
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFFEF4444).copy(alpha = 0.15f))
+                ) {
+                    Icon(Icons.Default.FormatColorText, contentDescription = "Mudar Cor do Texto", tint = Color(0xFFF87171), modifier = Modifier.size(19.dp))
+                }
+
+                // 5. Aumentar Tamanho / Título (Opções H1, H2, H3, Grande)
+                IconButton(
+                    onClick = { showTextSizeSheet = true },
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF38BDF8).copy(alpha = 0.15f))
+                ) {
+                    Icon(Icons.Default.FormatSize, contentDescription = "Tamanho do Texto", tint = Color(0xFF38BDF8), modifier = Modifier.size(19.dp))
+                }
+
+                // Atalhos rápidos de zoom da fonte do editor (A- / A+)
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF22252F))
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "A-",
+                        color = Color.LightGray,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clickable {
+                                editorFontSizeSp = (editorFontSizeSp - 2f).coerceAtLeast(12f)
+                            }
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                    Text(
+                        text = "${editorFontSizeSp.toInt()}",
+                        color = Color(0xFF38BDF8),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "A+",
+                        color = Color.LightGray,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clickable {
+                                editorFontSizeSp = (editorFontSizeSp + 2f).coerceAtMost(32f)
+                            }
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+
+                // Tirar Foto diretamente com a Câmera
+                IconButton(
+                    onClick = { cameraLauncher.launch(null) },
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF0284C7).copy(alpha = 0.2f))
+                ) {
+                    Icon(Icons.Default.CameraAlt, contentDescription = "Tirar Foto (Câmera)", tint = Color(0xFF38BDF8), modifier = Modifier.size(19.dp))
+                }
+
+                // Inserir Foto da Galeria
+                IconButton(
+                    onClick = { galleryLauncher.launch("image/*") },
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF8B5CF6).copy(alpha = 0.2f))
+                ) {
+                    Icon(Icons.Default.Image, contentDescription = "Inserir Foto (Galeria)", tint = Color(0xFFA78BFA), modifier = Modifier.size(19.dp))
+                }
+
+                // 6. Lista com marcadores
                 IconButton(onClick = {
                     val sel = contentValue.selection
                     val text = contentValue.text
                     val before = text.substring(0, sel.start)
                     val after = text.substring(sel.start)
-                    val newText = "$before## $after"
-                    contentValue = TextFieldValue(newText, TextRange(sel.start + 3))
-                }, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.Title, contentDescription = "Título", tint = Color.LightGray, modifier = Modifier.size(18.dp))
-                }
-
-                // Lista com marcadores
-                IconButton(onClick = {
-                    val sel = contentValue.selection
-                    val text = contentValue.text
-                    val before = text.substring(0, sel.start)
-                    val after = text.substring(sel.start)
-                    val newText = "$before\n- $after"
-                    contentValue = TextFieldValue(newText, TextRange(sel.start + 3))
-                }, modifier = Modifier.size(32.dp)) {
+                    val newText = if (before.endsWith("\n") || before.isEmpty()) "$before- $after" else "$before\n- $after"
+                    contentValue = TextFieldValue(newText, TextRange(newText.length - after.length))
+                }, modifier = Modifier.size(34.dp)) {
                     Icon(Icons.Default.FormatListBulleted, contentDescription = "Lista", tint = Color.LightGray, modifier = Modifier.size(18.dp))
                 }
 
-                // Lista de Tarefas (Checklist)
+                // 7. Lista de Tarefas (Checklist)
                 IconButton(onClick = {
                     val sel = contentValue.selection
                     val text = contentValue.text
                     val before = text.substring(0, sel.start)
                     val after = text.substring(sel.start)
-                    val newText = "$before\n- [ ] $after"
-                    contentValue = TextFieldValue(newText, TextRange(sel.start + 7))
-                }, modifier = Modifier.size(32.dp)) {
+                    val newText = if (before.endsWith("\n") || before.isEmpty()) "$before- [ ] $after" else "$before\n- [ ] $after"
+                    contentValue = TextFieldValue(newText, TextRange(newText.length - after.length))
+                }, modifier = Modifier.size(34.dp)) {
                     Icon(Icons.Default.Checklist, contentDescription = "Checklist", tint = Color.LightGray, modifier = Modifier.size(18.dp))
                 }
 
-                // Inserir Modelo de Tabela (Segundo Elemento & Significado)
+                // 8. Inserir Modelo de Tabela PowerPoint (2 Colunas)
                 IconButton(onClick = {
-                    val tmpl = NoteTemplates.SURGICAL_TERMINOLOGY
+                    val tmpl = NoteTemplates.POWERPOINT_TABLE
                     if (contentValue.text.isBlank()) {
                         contentValue = TextFieldValue(tmpl.content)
                         if (title.isBlank()) title = tmpl.title
@@ -376,25 +561,23 @@ fun NoteEditorScreen(
                         contentValue = TextFieldValue("${contentValue.text}\n\n${tmpl.content}")
                     }
                     Toast.makeText(context, "Modelo de tabela adicionado!", Toast.LENGTH_SHORT).show()
-                }, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.Category, contentDescription = "Inserir Tabela Modelo", tint = Color(0xFFC84B15), modifier = Modifier.size(18.dp))
+                }, modifier = Modifier.size(34.dp)) {
+                    Icon(Icons.Default.Category, contentDescription = "Inserir Tabela Modelo PowerPoint", tint = Color(0xFFC84B15), modifier = Modifier.size(18.dp))
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
-
-                // Categoria e Tags seletores
+                // 9. Categoria e Tags seletores
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color(0xFF2563EB).copy(alpha = 0.25f))
                         .clickable { showCategorySheet = true }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
                 ) {
                     val catName = categories.find { it.id == selectedCategoryId }?.name ?: "Sem Categoria"
                     Text(catName, color = Color(0xFF93C5FD), fontSize = 11.sp, fontWeight = FontWeight.Medium)
                 }
 
-                IconButton(onClick = { showTagDialog = true }, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = { showTagDialog = true }, modifier = Modifier.size(34.dp)) {
                     Icon(Icons.Default.Label, contentDescription = "Tags", tint = Color.LightGray, modifier = Modifier.size(18.dp))
                 }
             }
@@ -468,14 +651,17 @@ fun NoteEditorScreen(
                         value = contentValue,
                         onValueChange = { contentValue = it },
                         modifier = Modifier.fillMaxWidth().height(450.dp),
+                        visualTransformation = remember(editorSubTextColor, editorFontSizeSp) {
+                            NoteRichTextVisualTransformation(editorSubTextColor, editorFontSizeSp)
+                        },
                         textStyle = TextStyle(
                             color = editorSubTextColor,
-                            fontSize = 15.sp,
-                            lineHeight = 22.sp
+                            fontSize = editorFontSizeSp.sp,
+                            lineHeight = (editorFontSizeSp * 1.45f).sp
                         ),
                         decorationBox = { inner ->
                             if (contentValue.text.isEmpty()) {
-                                Text("Escreva a sua nota aqui...", color = editorSubTextColor.copy(alpha = 0.6f), fontSize = 15.sp)
+                                Text("Escreva a sua nota aqui...", color = editorSubTextColor.copy(alpha = 0.6f), fontSize = editorFontSizeSp.sp)
                             }
                             inner()
                         }
@@ -988,6 +1174,463 @@ fun NoteEditorScreen(
             }
         )
     }
+
+    // MODAL BOTTOM SHEET: COR DO TEXTO (REQUISITO: MUDAR COR DO TEXTO)
+    if (showTextColorSheet) {
+        val colorsList = listOf(
+            Pair("#EF4444", "Vermelho"),
+            Pair("#F97316", "Laranja"),
+            Pair("#FBBF24", "Amarelo"),
+            Pair("#22C55E", "Verde"),
+            Pair("#06B6D4", "Ciano"),
+            Pair("#38BDF8", "Azul Céu"),
+            Pair("#2563EB", "Azul Real"),
+            Pair("#A855F7", "Roxo"),
+            Pair("#F472B6", "Rosa"),
+            Pair("#FFFFFF", "Branco"),
+            Pair("#9CA3AF", "Cinza"),
+            Pair("#111827", "Escuro")
+        )
+
+        ModalBottomSheet(
+            onDismissRequest = { showTextColorSheet = false },
+            containerColor = Color(0xFF181A20)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.FormatColorText, contentDescription = null, tint = Color(0xFFF87171))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Mudar Cor do Texto", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                val selText = if (contentValue.selection.start != contentValue.selection.end) {
+                    val start = minOf(contentValue.selection.start, contentValue.selection.end)
+                    val end = maxOf(contentValue.selection.start, contentValue.selection.end)
+                    contentValue.text.substring(start, end)
+                } else ""
+                Text(
+                    text = if (selText.isNotBlank()) "Aplicar sobre o trecho: \"${selText.take(25)}\"" else "A cor será aplicada ao novo texto",
+                    color = Color.LightGray,
+                    fontSize = 12.sp
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    colorsList.forEach { (hex, label) ->
+                        val col = try { Color(android.graphics.Color.parseColor(hex)) } catch (_: Exception) { Color.White }
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .clickable {
+                                    contentValue = applyWrapOrInsert(contentValue, "<color=$hex>", "</color>", "texto colorido")
+                                    showTextColorSheet = false
+                                }
+                                .padding(4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(col)
+                                    .border(2.dp, Color.White.copy(alpha = 0.4f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("A", color = if (hex == "#FFFFFF" || hex == "#FBBF24") Color.Black else Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(label, color = Color.LightGray, fontSize = 10.sp)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    }
+
+    // MODAL BOTTOM SHEET: TAMANHO DO TEXTO & TÍTULOS (REQUISITO: AUMENTAR TAMANHO)
+    if (showTextSizeSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showTextSizeSheet = false },
+            containerColor = Color(0xFF181A20)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.FormatSize, contentDescription = null, tint = Color(0xFF38BDF8))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Aumentar Tamanho do Texto", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                val sizeOptions = listOf(
+                    Triple("Título Principal (H1)", "# ", 24),
+                    Triple("Subtítulo (H2)", "## ", 20),
+                    Triple("Seção (H3)", "### ", 17),
+                    Triple("Trecho em Destaque Grande", "[size:large]", 19),
+                    Triple("Trecho Enorme", "[size:huge]", 23)
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    sizeOptions.forEach { (label, prefix, fontSizeVal) ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (prefix.startsWith("#")) {
+                                        val sel = contentValue.selection
+                                        val text = contentValue.text
+                                        val before = text.substring(0, sel.start)
+                                        val after = text.substring(sel.start)
+                                        val newText = if (before.endsWith("\n") || before.isEmpty()) "$before$prefix$after" else "$before\n$prefix$after"
+                                        contentValue = TextFieldValue(newText, TextRange(newText.length - after.length))
+                                    } else {
+                                        val tag = prefix.removePrefix("[").removeSuffix("]")
+                                        contentValue = applyWrapOrInsert(contentValue, "[$tag]", "[/${tag.substringBefore(":")}]", "texto grande")
+                                    }
+                                    showTextSizeSheet = false
+                                },
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF22252F)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Aa",
+                                    color = Color(0xFF38BDF8),
+                                    fontSize = (fontSizeVal * 0.9f).sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.width(44.dp)
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(label, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                    Text("Estilo $prefix", color = Color.Gray, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(color = Color(0xFF2E323D))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Zoom geral da fonte do bloco
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Tamanho Geral do Bloco:", color = Color.LightGray, fontSize = 13.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Button(
+                            onClick = { editorFontSizeSp = (editorFontSizeSp - 2f).coerceAtLeast(12f) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2D313D)),
+                            modifier = Modifier.size(36.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                        ) {
+                            Text("-", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Text("${editorFontSizeSp.toInt()} sp", color = Color(0xFF38BDF8), fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 12.dp))
+                        Button(
+                            onClick = { editorFontSizeSp = (editorFontSizeSp + 2f).coerceAtMost(32f) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                            modifier = Modifier.size(36.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                        ) {
+                            Text("+", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    }
+}
+
+// UTILITÁRIO DE ENVOLVER OU INSERIR FORMATAÇÃO
+fun applyWrapOrInsert(
+    current: TextFieldValue,
+    prefix: String,
+    suffix: String,
+    placeholder: String
+): TextFieldValue {
+    val sel = current.selection
+    val text = current.text
+    val start = minOf(sel.start, sel.end)
+    val end = maxOf(sel.start, sel.end)
+
+    val before = text.substring(0, start)
+    val after = text.substring(end)
+
+    return if (start != end) {
+        val selected = text.substring(start, end)
+        if (selected.startsWith(prefix) && selected.endsWith(suffix) && selected.length >= prefix.length + suffix.length) {
+            val unwrapped = selected.substring(prefix.length, selected.length - suffix.length)
+            val newText = "$before$unwrapped$after"
+            TextFieldValue(newText, TextRange(start, start + unwrapped.length))
+        } else {
+            val newText = "$before$prefix$selected$suffix$after"
+            TextFieldValue(newText, TextRange(start + prefix.length, end + prefix.length))
+        }
+    } else {
+        val newText = "$before$prefix$placeholder$suffix$after"
+        TextFieldValue(newText, TextRange(start + prefix.length, start + prefix.length + placeholder.length))
+    }
+}
+
+// VISUAL TRANSFORMATION PARA O EDITOR DE TEXTO RICO (NEGRITO, DESTAQUE, CORES E TAMANHOS EM TEMPO REAL)
+class NoteRichTextVisualTransformation(
+    private val defaultColor: Color,
+    private val baseFontSize: Float = 16f
+) : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val raw = text.text
+        val builder = AnnotatedString.Builder(raw)
+
+        // 1. Negrito: **...**
+        val boldRegex = Regex("""\*\*(.+?)\*\*""")
+        boldRegex.findAll(raw).forEach { match ->
+            val range = match.groups[1]!!.range
+            builder.addStyle(
+                SpanStyle(fontWeight = FontWeight.Bold, color = defaultColor),
+                range.first,
+                range.last + 1
+            )
+            builder.addStyle(
+                SpanStyle(color = defaultColor.copy(alpha = 0.35f)),
+                match.range.first,
+                match.range.first + 2
+            )
+            builder.addStyle(
+                SpanStyle(color = defaultColor.copy(alpha = 0.35f)),
+                match.range.last - 1,
+                match.range.last + 1
+            )
+        }
+
+        // 2. Itálico: *...*
+        val italicRegex = Regex("""(?<!\*)\*([^*]+?)\*(?!\*)""")
+        italicRegex.findAll(raw).forEach { match ->
+            val range = match.groups[1]!!.range
+            builder.addStyle(
+                SpanStyle(fontStyle = FontStyle.Italic),
+                range.first,
+                range.last + 1
+            )
+            builder.addStyle(
+                SpanStyle(color = defaultColor.copy(alpha = 0.35f)),
+                match.range.first,
+                match.range.first + 1
+            )
+            builder.addStyle(
+                SpanStyle(color = defaultColor.copy(alpha = 0.35f)),
+                match.range.last,
+                match.range.last + 1
+            )
+        }
+
+        // 3. Destacar: ==...== ou <mark>...</mark>
+        val highlightRegex = Regex("""(==|<mark>)(.+?)(==|</mark>)""")
+        highlightRegex.findAll(raw).forEach { match ->
+            val openTag = match.groups[1]!!.value
+            val closeTag = match.groups[3]!!.value
+            val contentGroup = match.groups[2]!!
+
+            builder.addStyle(
+                SpanStyle(
+                    background = Color(0xFFFEF08A),
+                    color = Color(0xFF1E293B),
+                    fontWeight = FontWeight.SemiBold
+                ),
+                contentGroup.range.first,
+                contentGroup.range.last + 1
+            )
+            builder.addStyle(
+                SpanStyle(color = Color(0xFFCA8A04).copy(alpha = 0.5f), fontSize = (baseFontSize * 0.8f).sp),
+                match.range.first,
+                match.range.first + openTag.length
+            )
+            builder.addStyle(
+                SpanStyle(color = Color(0xFFCA8A04).copy(alpha = 0.5f), fontSize = (baseFontSize * 0.8f).sp),
+                match.range.last - closeTag.length + 1,
+                match.range.last + 1
+            )
+        }
+
+        // 4. Mudar de Cor: <color=#hex>...</color> ou [color:#hex]...[/color]
+        val colorRegex = Regex("""(<color=(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8})>|\[color:(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8})\])(.+?)(</color>|\[/color\])""")
+        colorRegex.findAll(raw).forEach { match ->
+            val hex = match.groups[2]?.value ?: match.groups[3]?.value ?: ""
+            val contentGroup = match.groups[4]!!
+            try {
+                val parsedColor = Color(android.graphics.Color.parseColor(hex))
+                builder.addStyle(
+                    SpanStyle(color = parsedColor, fontWeight = FontWeight.Bold),
+                    contentGroup.range.first,
+                    contentGroup.range.last + 1
+                )
+            } catch (_: Exception) {}
+            val openTag = match.groups[1]!!.value
+            val closeTag = match.groups[5]!!.value
+            builder.addStyle(
+                SpanStyle(color = defaultColor.copy(alpha = 0.35f), fontSize = (baseFontSize * 0.75f).sp),
+                match.range.first,
+                match.range.first + openTag.length
+            )
+            builder.addStyle(
+                SpanStyle(color = defaultColor.copy(alpha = 0.35f), fontSize = (baseFontSize * 0.75f).sp),
+                match.range.last - closeTag.length + 1,
+                match.range.last + 1
+            )
+        }
+
+        // 5. Aumentar Tamanho: [size:large]...[/size] ou [size:huge]...[/size]
+        val sizeRegex = Regex("""\[size:(large|huge)\](.+?)\[/size\]""")
+        sizeRegex.findAll(raw).forEach { match ->
+            val sizeType = match.groups[1]!!.value
+            val contentGroup = match.groups[2]!!
+            val targetSp = if (sizeType == "huge") (baseFontSize * 1.55f).sp else (baseFontSize * 1.3f).sp
+            builder.addStyle(
+                SpanStyle(fontSize = targetSp, fontWeight = FontWeight.Bold),
+                contentGroup.range.first,
+                contentGroup.range.last + 1
+            )
+        }
+
+        // 6. Linhas de Título (# , ## , ###)
+        val lines = raw.split("\n")
+        var currentOffset = 0
+        for (line in lines) {
+            val lineLen = line.length
+            if (line.startsWith("# ")) {
+                builder.addStyle(
+                    SpanStyle(fontSize = (baseFontSize * 1.5f).sp, fontWeight = FontWeight.Bold, color = Color(0xFF38BDF8)),
+                    currentOffset,
+                    currentOffset + lineLen
+                )
+            } else if (line.startsWith("## ")) {
+                builder.addStyle(
+                    SpanStyle(fontSize = (baseFontSize * 1.3f).sp, fontWeight = FontWeight.Bold, color = Color(0xFF60A5FA)),
+                    currentOffset,
+                    currentOffset + lineLen
+                )
+            } else if (line.startsWith("### ")) {
+                builder.addStyle(
+                    SpanStyle(fontSize = (baseFontSize * 1.15f).sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF93C5FD)),
+                    currentOffset,
+                    currentOffset + lineLen
+                )
+            }
+            currentOffset += lineLen + 1
+        }
+
+        // 7. Imagens Markdown: ![Alt](caminho)
+        val imgRegex = Regex("""!\[(.*?)\]\((.*?)\)""")
+        imgRegex.findAll(raw).forEach { match ->
+            builder.addStyle(
+                SpanStyle(color = Color(0xFF38BDF8), fontWeight = FontWeight.Bold),
+                match.range.first,
+                match.range.last + 1
+            )
+        }
+
+        return TransformedText(builder.toAnnotatedString(), OffsetMapping.Identity)
+    }
+}
+
+// PARSER DE MARKDOWN RICO PARA MODO DE PRÉ-VISUALIZAÇÃO (SEM MARCADORES BRUTOS)
+fun parseRichMarkdownToAnnotatedString(
+    line: String,
+    defaultColor: Color,
+    baseFontSize: Float = 15f
+): AnnotatedString {
+    val builder = AnnotatedString.Builder()
+
+    // Regex para identificar e retirar as tags, aplicando estilos sobre o texto limpo
+    val tokenRegex = Regex("""(\*\*(.+?)\*\*)|(==(.+?)==|<mark>(.+?)</mark>)|(<color=(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8})>(.+?)</color>|\[color:(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8})\](.+?)\[/color\])|(\[size:(large|huge)\](.+?)\[/size\])|(?<!\*)\*([^*]+?)\*(?!\*)""")
+
+    var lastIdx = 0
+    tokenRegex.findAll(line).forEach { match ->
+        if (match.range.first > lastIdx) {
+            val normalText = line.substring(lastIdx, match.range.first)
+            builder.append(normalText)
+        }
+
+        val fullMatch = match.value
+        when {
+            // Negrito
+            fullMatch.startsWith("**") && fullMatch.endsWith("**") -> {
+                val content = fullMatch.removeSurrounding("**")
+                val start = builder.length
+                builder.append(content)
+                builder.addStyle(SpanStyle(fontWeight = FontWeight.Bold, color = defaultColor), start, builder.length)
+            }
+            // Destacar
+            (fullMatch.startsWith("==") && fullMatch.endsWith("==")) || (fullMatch.startsWith("<mark>") && fullMatch.endsWith("</mark>")) -> {
+                val content = if (fullMatch.startsWith("==")) fullMatch.removeSurrounding("==") else fullMatch.removePrefix("<mark>").removeSuffix("</mark>")
+                val start = builder.length
+                builder.append(content)
+                builder.addStyle(
+                    SpanStyle(background = Color(0xFFFEF08A), color = Color(0xFF1E293B), fontWeight = FontWeight.SemiBold),
+                    start, builder.length
+                )
+            }
+            // Cor
+            fullMatch.startsWith("<color=") || fullMatch.startsWith("[color:") -> {
+                val hex = match.groups[7]?.value ?: match.groups[9]?.value ?: "#FFFFFF"
+                val content = match.groups[8]?.value ?: match.groups[10]?.value ?: ""
+                val start = builder.length
+                builder.append(content)
+                try {
+                    val parsedColor = Color(android.graphics.Color.parseColor(hex))
+                    builder.addStyle(SpanStyle(color = parsedColor, fontWeight = FontWeight.Bold), start, builder.length)
+                } catch (_: Exception) {}
+            }
+            // Tamanho
+            fullMatch.startsWith("[size:") -> {
+                val sizeType = match.groups[12]?.value ?: "large"
+                val content = match.groups[13]?.value ?: ""
+                val targetSp = if (sizeType == "huge") (baseFontSize * 1.55f).sp else (baseFontSize * 1.3f).sp
+                val start = builder.length
+                builder.append(content)
+                builder.addStyle(SpanStyle(fontSize = targetSp, fontWeight = FontWeight.Bold), start, builder.length)
+            }
+            // Itálico
+            fullMatch.startsWith("*") && fullMatch.endsWith("*") -> {
+                val content = fullMatch.removeSurrounding("*")
+                val start = builder.length
+                builder.append(content)
+                builder.addStyle(SpanStyle(fontStyle = FontStyle.Italic, color = defaultColor), start, builder.length)
+            }
+            else -> {
+                builder.append(fullMatch)
+            }
+        }
+        lastIdx = match.range.last + 1
+    }
+
+    if (lastIdx < line.length) {
+        builder.append(line.substring(lastIdx))
+    }
+
+    return builder.toAnnotatedString()
 }
 
 @Composable
@@ -1012,18 +1655,197 @@ fun NoteTablePreview(
                     inTable = false
                 }
                 if (trimmed.isNotBlank()) {
-                    Text(
-                        text = line,
-                        color = editorSubTextColor,
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
+                    when {
+                        // Título H1
+                        trimmed.startsWith("# ") -> {
+                            val cleanTitle = trimmed.removePrefix("# ").trim()
+                            Text(
+                                text = cleanTitle,
+                                color = Color(0xFF38BDF8),
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
+                            )
+                        }
+                        // Subtítulo H2
+                        trimmed.startsWith("## ") -> {
+                            val cleanTitle = trimmed.removePrefix("## ").trim()
+                            Text(
+                                text = cleanTitle,
+                                color = Color(0xFF60A5FA),
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                            )
+                        }
+                        // Seção H3
+                        trimmed.startsWith("### ") -> {
+                            val cleanTitle = trimmed.removePrefix("### ").trim()
+                            Text(
+                                text = cleanTitle,
+                                color = Color(0xFF93C5FD),
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+                            )
+                        }
+                        // Checklist marcado (- [x] ou - [X])
+                        trimmed.startsWith("- [x] ", ignoreCase = true) -> {
+                            val taskText = trimmed.substring(6).trim()
+                            Row(
+                                modifier = Modifier.padding(vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.CheckBox, contentDescription = null, tint = Color(0xFF34D399), modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = parseRichMarkdownToAnnotatedString(taskText, editorSubTextColor.copy(alpha = 0.7f)),
+                                    fontSize = 15.sp,
+                                    lineHeight = 22.sp
+                                )
+                            }
+                        }
+                        // Checklist desmarcado (- [ ])
+                        trimmed.startsWith("- [ ] ") -> {
+                            val taskText = trimmed.substring(6).trim()
+                            Row(
+                                modifier = Modifier.padding(vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.CheckBoxOutlineBlank, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = parseRichMarkdownToAnnotatedString(taskText, editorSubTextColor),
+                                    fontSize = 15.sp,
+                                    lineHeight = 22.sp
+                                )
+                            }
+                        }
+                        // Marcador de lista (- )
+                        trimmed.startsWith("- ") -> {
+                            val itemText = trimmed.substring(2).trim()
+                            Row(
+                                modifier = Modifier.padding(vertical = 3.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Text("• ", color = Color(0xFF38BDF8), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = parseRichMarkdownToAnnotatedString(itemText, editorSubTextColor),
+                                    fontSize = 15.sp,
+                                    lineHeight = 22.sp
+                                )
+                            }
+                        }
+                        // Imagem Markdown: ![Alt](caminho)
+                        trimmed.startsWith("![") && trimmed.contains("](") && trimmed.endsWith(")") -> {
+                            val alt = trimmed.substringAfter("![").substringBefore("]")
+                            val imgPath = trimmed.substringAfter("](").substringBeforeLast(")")
+                            RenderNoteImage(path = imgPath, alt = alt)
+                        }
+                        // Parágrafo com formatação rica
+                        else -> {
+                            Text(
+                                text = parseRichMarkdownToAnnotatedString(line, editorSubTextColor),
+                                fontSize = 15.sp,
+                                lineHeight = 22.sp,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
         if (tableLines.isNotEmpty()) {
             RenderMarkdownTable(tableLines)
+        }
+    }
+}
+
+@Composable
+fun RenderNoteImage(path: String, alt: String) {
+    val context = LocalContext.current
+    var bitmap by remember(path) { mutableStateOf<Bitmap?>(null) }
+    var loadFailed by remember(path) { mutableStateOf(false) }
+
+    LaunchedEffect(path) {
+        withContext(Dispatchers.IO) {
+            try {
+                if (path.startsWith("data:image")) {
+                    val base64 = path.substringAfter("base64,")
+                    val bytes = Base64.decode(base64, Base64.DEFAULT)
+                    bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                } else if (path.startsWith("content://") || path.startsWith("file://")) {
+                    val uri = Uri.parse(path)
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        bitmap = BitmapFactory.decodeStream(stream)
+                    }
+                } else {
+                    val file = File(path)
+                    if (file.exists()) {
+                        bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                    } else {
+                        loadFailed = true
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                loadFailed = true
+            }
+        }
+    }
+
+    if (bitmap != null) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+        ) {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+            ) {
+                Image(
+                    bitmap = bitmap!!.asImageBitmap(),
+                    contentDescription = alt,
+                    contentScale = ContentScale.FillWidth,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 380.dp)
+                )
+            }
+            if (alt.isNotBlank() && alt != "Foto" && alt != "Imagem" && alt != "Foto da Câmera") {
+                Text(
+                    text = alt,
+                    color = Color.LightGray,
+                    fontSize = 12.sp,
+                    fontStyle = FontStyle.Italic,
+                    modifier = Modifier.padding(top = 4.dp, start = 4.dp)
+                )
+            }
+        }
+    } else {
+        Card(
+            shape = RoundedCornerShape(10.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF181B26)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Image, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (loadFailed) "⚠️ Imagem não encontrada: $alt" else "📸 $alt (${File(path).name})",
+                    color = Color.LightGray,
+                    fontSize = 13.sp
+                )
+            }
         }
     }
 }
@@ -1047,7 +1869,6 @@ fun RenderMarkdownTable(lines: List<String>) {
         colors = CardDefaults.cardColors(containerColor = Color(0xFFF7D7D2))
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // CABEÇALHO TERRACOTA / LARANJA ESCURO (IDÊNTICO À IMAGEM)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1066,7 +1887,6 @@ fun RenderMarkdownTable(lines: List<String>) {
                 }
             }
 
-            // LINHAS DE DADOS (FUNDO ROSA/SALMÃO CLARO COM DIVISÓRIAS)
             dataRows.forEachIndexed { rowIdx, rowCells ->
                 Row(
                     modifier = Modifier
@@ -1093,4 +1913,5 @@ fun RenderMarkdownTable(lines: List<String>) {
         }
     }
 }
+
 

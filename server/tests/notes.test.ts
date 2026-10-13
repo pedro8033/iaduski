@@ -92,24 +92,73 @@ describe('Sistema de Blocos de Notas Inteligentes - Endpoints /api/notes', () =>
     expect(checkNote.body.note.categoryId).toBeNull();
   });
 
-  it('retorna os modelos de notas incluindo o modelo padrão e o novo modelo de tabela médica', async () => {
+  it('retorna os modelos de notas incluindo o padrão, a terminologia e o novo modelo de tabela PowerPoint', async () => {
     const res = await request(app).get('/api/notes/templates');
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(Array.isArray(res.body.templates)).toBe(true);
 
-    // O modelo original deve permanecer intacto
+    // O modelo original padrão permanece intacto
     const defaultTemplate = res.body.templates.find((t: any) => t.id === 'default_blank');
     expect(defaultTemplate).toBeDefined();
 
-    // O novo modelo anexado deve estar presente
+    // O modelo de terminologia cirúrgica permanece disponível e limpo
     const surgicalTemplate = res.body.templates.find((t: any) => t.id === 'surgical_terminology_table');
     expect(surgicalTemplate).toBeDefined();
     expect(surgicalTemplate.title).toBe('Segundo Elemento e Significado');
     expect(surgicalTemplate.content).toContain('Segundo elemento');
     expect(surgicalTemplate.content).toContain('Significado');
-    expect(surgicalTemplate.content).toContain('-algia/algo');
-    expect(surgicalTemplate.content).toContain('-tomia');
     expect(surgicalTemplate.color).toBe('#c84b15');
+
+    // O novo modelo de tabela PowerPoint (2 colunas) está presente e adicionado
+    const pptTemplate = res.body.templates.find((t: any) => t.id === 'powerpoint_table');
+    expect(pptTemplate).toBeDefined();
+    expect(pptTemplate.name).toContain('PowerPoint');
+    expect(pptTemplate.content).toContain('Coluna 1');
+    expect(pptTemplate.content).toContain('Coluna 2');
+    expect(pptTemplate.color).toBe('#c84b15');
+  });
+
+  it('retorna a configuração pública do Supabase em /api/notes/config/supabase', async () => {
+    const res = await request(app).get('/api/notes/config/supabase');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body).toHaveProperty('configured');
+    expect(res.body).toHaveProperty('supabaseUrl');
+    expect(res.body).toHaveProperty('supabaseAnonKey');
+  });
+
+  it('isola notas entre diferentes utilizadores usando x-user-id', async () => {
+    const userA = 'user_test_uuid_a';
+    const userB = 'user_test_uuid_b';
+
+    // Cria nota para Usuário A
+    const resA = await request(app)
+      .post('/api/notes')
+      .set('x-user-id', userA)
+      .send({
+        title: 'Nota do Utilizador A',
+        content: 'Conteúdo confidencial A',
+      });
+    expect(resA.status).toBe(200);
+    expect(resA.body.note.userId).toBe(userA);
+
+    // Listar como Usuário B não deve conter a nota de Usuário A
+    const listB = await request(app)
+      .get('/api/notes')
+      .set('x-user-id', userB);
+    expect(listB.status).toBe(200);
+    const foundInB = listB.body.notes.find((n: any) => n.id === resA.body.note.id);
+    expect(foundInB).toBeUndefined();
+
+    // Listar como Usuário A deve conter a nota
+    const listA = await request(app)
+      .get('/api/notes')
+      .set('x-user-id', userA);
+    expect(listA.status).toBe(200);
+    const foundInA = listA.body.notes.find((n: any) => n.id === resA.body.note.id);
+    expect(foundInA).toBeDefined();
+    expect(foundInA.title).toBe('Nota do Utilizador A');
   });
 });
+

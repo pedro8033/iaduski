@@ -80,3 +80,15 @@ A extensão Chrome (Manifest V3) preserva a funcionalidade de deteção e resolu
 npm run build:extension
 ```
 Carregue a pasta `extension/dist` em `chrome://extensions` (modo de programador ativo).
+
+---
+
+## 🗄️ Banco de Dados & Sincronização na Nuvem (Supabase + Google Auth)
+
+O sistema de **Bloco de Notas Inteligentes** possui integração nativa com o **Supabase** e autenticação **Google OAuth**:
+- **Migrações SQL completas** em [`supabase/schema.sql`](supabase/schema.sql) e [`supabase/migrations/`](supabase/migrations/)
+- **Row Level Security (RLS)** ativo com isolamento de notas por utilizador (`auth.uid() = user_id`)
+- **Login com Google** no frontend web (`server/public`) com sincronização em tempo real
+- **Fallback local automático** garantindo que as notas funcionem sempre, mesmo offline ou antes de configurar o Supabase.
+- Consulte o guia completo passo a passo em [`supabase/README.md`](supabase/README.md).
+

@@ -176,10 +176,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderMarkdown(text) {
+    if (!text) return '';
+    let parsed = text;
+    // Destaque (Highlight)
+    parsed = parsed.replace(/==(.+?)==/g, '<mark style="background:#fef08a;color:#1e293b;padding:2px 5px;border-radius:4px;font-weight:600;">$1</mark>');
+    parsed = parsed.replace(/<mark>(.+?)<\/mark>/g, '<mark style="background:#fef08a;color:#1e293b;padding:2px 5px;border-radius:4px;font-weight:600;">$1</mark>');
+    // Cores de texto
+    parsed = parsed.replace(/<color=(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8})>(.+?)<\/color>/g, '<span style="color:$1;font-weight:bold;">$2</span>');
+    parsed = parsed.replace(/\[color:(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8})\](.+?)\[\/color\]/g, '<span style="color:$1;font-weight:bold;">$2</span>');
+    // Tamanho do texto
+    parsed = parsed.replace(/\[size:large\](.+?)\[\/size\]/g, '<span style="font-size:1.3em;font-weight:bold;">$1</span>');
+    parsed = parsed.replace(/\[size:huge\](.+?)\[\/size\]/g, '<span style="font-size:1.6em;font-weight:bold;">$1</span>');
+    // Imagens Markdown: ![alt](url_ou_data)
+    parsed = parsed.replace(/!\[(.*?)\]\((.*?)\)/g, '<div class="note-img-container" style="margin:10px 0;"><img src="$2" alt="$1" style="max-width:100%;max-height:360px;border-radius:8px;border:1px solid #334155;display:block;" /><small style="color:#94a3b8;font-style:italic;">$1</small></div>');
+
     if (window.marked && typeof window.marked.parse === 'function') {
-      return window.marked.parse(text || '');
+      return window.marked.parse(parsed);
     }
-    return (text || '').replace(/\n/g, '<br>');
+    return parsed.replace(/\n/g, '<br>');
   }
 
   /* ==========================================================================
@@ -191,6 +205,8 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       state.conversations = saved ? JSON.parse(saved) : [];
+      // Garante que apenas conversas com mensagens válidas são carregadas
+      state.conversations = state.conversations.filter((c) => c && Array.isArray(c.messages) && c.messages.length > 0);
     } catch {
       state.conversations = [];
     }
@@ -198,11 +214,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function saveConversations() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.conversations));
+    // Apenas persiste conversas que possuem mensagens para evitar acumular vazias no localStorage
+    const toSave = state.conversations.filter((c) => c && Array.isArray(c.messages) && c.messages.length > 0);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
     renderRecentList();
   }
 
   function createNewConversation(initialTitle = 'Novo chat') {
+    // Se a conversa atual já está vazia, apenas garante a tela inicial limpa
+    const current = getCurrentConversation();
+    if (current && (!current.messages || current.messages.length === 0)) {
+      showWelcomeView();
+      return;
+    }
+
+    // Limpa conversas vazias anteriores da memória antes de criar uma nova
+    state.conversations = state.conversations.filter((c) => c && Array.isArray(c.messages) && c.messages.length > 0);
+
     const newConv = {
       id: 'conv_' + Date.now(),
       title: initialTitle,
@@ -221,7 +249,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderRecentList() {
     dom.recentChatsList.innerHTML = '';
-    state.conversations.slice(0, 25).forEach((conv) => {
+
+    // Apenas conversas com mensagens reais são listadas no histórico recente
+    const validConvs = state.conversations.filter((c) => c && Array.isArray(c.messages) && c.messages.length > 0);
+
+    const btnClearAll = document.getElementById('btn-clear-all-history');
+    if (btnClearAll) {
+      btnClearAll.style.display = validConvs.length > 0 ? 'inline-block' : 'none';
+    }
+
+    validConvs.slice(0, 25).forEach((conv) => {
       const item = document.createElement('div');
       item.className = `recent-chat-item ${conv.id === state.currentConversationId ? 'active' : ''}`;
       item.innerHTML = `
@@ -242,7 +279,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function openConversation(id) {
     state.currentConversationId = id;
     const conv = getCurrentConversation();
-    if (!conv || conv.messages.length === 0) {
+
+    // Sempre esvazia o DOM de mensagens antes de abrir ou alternar qualquer conversa
+    dom.chatMessages.innerHTML = '';
+
+    if (!conv || !conv.messages || conv.messages.length === 0) {
       showWelcomeView();
       return;
     }
@@ -251,7 +292,6 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.chatMessages.style.display = 'flex';
     dom.fixedBottomBar.style.display = 'block';
 
-    dom.chatMessages.innerHTML = '';
     conv.messages.forEach((msg) => {
       appendMessageToDOM(msg);
     });
@@ -262,16 +302,35 @@ document.addEventListener('DOMContentLoaded', () => {
   function deleteConversation(id) {
     state.conversations = state.conversations.filter((c) => c.id !== id);
     if (state.currentConversationId === id) {
-      createNewConversation();
+      dom.chatMessages.innerHTML = '';
+      if (state.conversations.length > 0) {
+        openConversation(state.conversations[0].id);
+      } else {
+        createNewConversation();
+      }
     } else {
       saveConversations();
     }
     showToast('Conversa excluída.');
   }
 
+  function clearAllConversations() {
+    const hasHistory = state.conversations.some((c) => c && Array.isArray(c.messages) && c.messages.length > 0);
+    if (!hasHistory) return;
+    if (!confirm('Deseja realmente apagar todo o histórico de conversas?')) return;
+
+    state.conversations = [];
+    state.currentConversationId = null;
+    localStorage.removeItem(STORAGE_KEY);
+    dom.chatMessages.innerHTML = '';
+    createNewConversation();
+    showToast('Todo o histórico de conversas foi eliminado.');
+  }
+
   function showWelcomeView() {
     dom.welcomeView.style.display = 'flex';
     dom.chatMessages.style.display = 'none';
+    dom.chatMessages.innerHTML = ''; // CRUCIAL: esvazia o DOM para que mensagens anteriores não vazem
     dom.fixedBottomBar.style.display = 'none';
     dom.mainChatInput.value = '';
     clearAttachment();
@@ -870,6 +929,13 @@ document.addEventListener('DOMContentLoaded', () => {
     createNewConversation();
   });
 
+  const btnClearAllHistory = document.getElementById('btn-clear-all-history');
+  if (btnClearAllHistory) {
+    btnClearAllHistory.addEventListener('click', () => {
+      clearAllConversations();
+    });
+  }
+
   /* ==========================================================================
      ANEXOS DE IMAGEM & UPLOAD
      ========================================================================== */
@@ -1039,9 +1105,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!state.currentConversationId) {
       createNewConversation(userText.slice(0, 30) || 'Conversa');
     }
-    const conv = getCurrentConversation();
-    if (conv && conv.messages.length === 0 && userText) {
-      conv.title = userText.slice(0, 32);
+    let conv = getCurrentConversation();
+    if (!conv) {
+      createNewConversation(userText.slice(0, 30) || 'Conversa');
+      conv = getCurrentConversation();
+    }
+    if (conv && conv.messages.length === 0) {
+      if (userText) {
+        conv.title = userText.slice(0, 32);
+      }
+      // Se for a primeira mensagem, garante que o DOM está 100% limpo
+      dom.chatMessages.innerHTML = '';
     }
 
     // Transição da tela de Welcome para a tela de Chat
@@ -1806,6 +1880,102 @@ document.addEventListener('DOMContentLoaded', () => {
   initVoiceListeners();
 
   /* ==========================================================================
+     GERENCIADOR DE SINCRONIZAÇÃO SUPABASE CLOUD (CONEXÃO DIRETA COM BANCO)
+     ========================================================================== */
+  const cloudManager = {
+    isConfigured: false,
+    supabaseUrl: '',
+
+    async init() {
+      this.bindEvents();
+      try {
+        const res = await fetch('/api/notes/config/supabase');
+        const data = await res.json();
+        this.isConfigured = Boolean(data.configured && data.supabaseUrl && data.supabaseAnonKey);
+        this.supabaseUrl = data.supabaseUrl || '';
+
+        const dot = document.getElementById('modal-cloud-dot');
+        const statusText = document.getElementById('modal-cloud-status-text');
+        const topbarBtn = document.getElementById('btn-topbar-auth');
+        const topbarLabel = document.getElementById('topbar-auth-label');
+        const syncBadge = document.getElementById('btn-cloud-sync-status');
+        const syncLabel = document.getElementById('cloud-sync-label');
+        const dbLabel = document.getElementById('modal-cloud-db-label');
+        const endpointLabel = document.getElementById('modal-cloud-endpoint-label');
+
+        if (this.isConfigured) {
+          if (dot) dot.className = 'cloud-dot-status online';
+          if (statusText) statusText.textContent = 'Supabase Conectado e Operacional';
+          if (topbarBtn) topbarBtn.classList.add('logged-in');
+          if (topbarLabel) topbarLabel.textContent = 'Supabase Cloud (Ativo)';
+          if (syncBadge) syncBadge.classList.add('synced');
+          if (syncLabel) syncLabel.textContent = '☁️ Supabase Cloud';
+          if (dbLabel) {
+            dbLabel.textContent = 'Conectado (PostgreSQL)';
+            dbLabel.style.color = '#3ecf8e';
+          }
+          if (endpointLabel) {
+            endpointLabel.textContent = this.supabaseUrl.replace(/^https?:\/\//, '');
+          }
+        } else {
+          if (dot) dot.className = 'cloud-dot-status';
+          if (statusText) statusText.textContent = 'Supabase em Modo Local (credenciais pendentes em .env)';
+          if (topbarBtn) topbarBtn.classList.remove('logged-in');
+          if (topbarLabel) topbarLabel.textContent = 'Modo Local';
+          if (syncBadge) syncBadge.classList.remove('synced');
+          if (syncLabel) syncLabel.textContent = 'Local (Offline)';
+          if (dbLabel) {
+            dbLabel.textContent = 'Local (notes-db.json)';
+            dbLabel.style.color = '#fbbf24';
+          }
+        }
+
+        if (window.notesManager) {
+          window.notesManager.fetchNotes();
+          window.notesManager.loadTaxonomies();
+        }
+      } catch (err) {
+        console.warn('[cloudManager] Falha ao consultar config do Supabase:', err);
+      }
+    },
+
+    bindEvents() {
+      const openModal = () => {
+        const modal = document.getElementById('modal-auth');
+        if (modal) modal.style.display = 'flex';
+      };
+
+      const closeModal = () => {
+        const modal = document.getElementById('modal-auth');
+        if (modal) modal.style.display = 'none';
+      };
+
+      document.getElementById('btn-topbar-auth')?.addEventListener('click', openModal);
+      document.getElementById('btn-user-profile')?.addEventListener('click', openModal);
+      document.getElementById('btn-cloud-sync-status')?.addEventListener('click', openModal);
+      document.getElementById('btn-close-auth-modal')?.addEventListener('click', closeModal);
+
+      document.getElementById('modal-auth')?.addEventListener('click', (e) => {
+        if (e.target.id === 'modal-auth') closeModal();
+      });
+
+      document.getElementById('btn-sync-notes-cloud')?.addEventListener('click', async () => {
+        if (window.notesManager) {
+          await window.notesManager.fetchNotes();
+          await window.notesManager.loadTaxonomies();
+          showToast('Notas sincronizadas com o Supabase!');
+        }
+      });
+    },
+
+    getAuthHeaders() {
+      return {};
+    }
+  };
+
+  window.authManager = cloudManager;
+
+  /* ==========================================================================
      SISTEMA DE BLOCOS DE NOTAS INTELIGENTES (CLIENT-SIDE CONTROLLER)
      ========================================================================== */
   const notesManager = {
@@ -1847,9 +2017,18 @@ document.addEventListener('DOMContentLoaded', () => {
         name: 'Tabela: Segundo elemento & Significado',
         description: 'Modelo de terminologia cirúrgica e médica com prefixos/sufixos e significados',
         title: 'Segundo Elemento e Significado',
-        content: `| Segundo elemento | Significado |\n| :--- | :--- |\n| **-algia/algo** | Dor |\n| **-cele** | Tumor; hérnia |\n| **-centese** | Punção; orifício |\n| **-ectomia** | Remoção parcial ou total |\n| **-oma** | Tumor |\n| **-pexia** | Fixação de um órgão |\n| **-plastia** | Reconstituição de uma parte do corpo |\n| **-rafia** | Sutura |\n| **-scopia** | Ato de ver; observar |\n| **-stomia** | Comunicação entre dois órgãos ocos ou entre um órgão e a pele |\n| **-tomia** | Corte ; abertura |`,
+        content: `| Segundo elemento | Significado |\n| :--- | :--- |\n| | |\n| | |\n| | |\n| | |\n| | |`,
         color: '#c84b15',
         tags: ['terminologia', 'cirurgia', 'sufixos']
+      },
+      {
+        id: 'powerpoint_table',
+        name: 'Tabela PowerPoint (2 Colunas)',
+        description: 'Modelo idêntico ao PowerPoint: tabela de 2 colunas com cabeçalho terracota e 13 linhas alternadas',
+        title: 'Tabela',
+        content: `| Coluna 1 | Coluna 2 |\n| :--- | :--- |\n| | |\n| | |\n| | |\n| | |\n| | |\n| | |\n| | |\n| | |\n| | |\n| | |\n| | |\n| | |\n| | |`,
+        color: '#c84b15',
+        tags: ['tabela', 'powerpoint', 'comparativo']
       }
     ],
 
@@ -2135,7 +2314,7 @@ document.addEventListener('DOMContentLoaded', () => {
             triggerAutoSave();
             fetch('/api/notes/tags', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', ...authManager.getAuthHeaders() },
               body: JSON.stringify({ name: clean })
             });
           }
@@ -2176,7 +2355,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (inp && inp.value.trim()) {
           await fetch('/api/notes/categories', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authManager.getAuthHeaders() },
             body: JSON.stringify({ name: inp.value.trim() })
           });
           inp.value = '';
@@ -2199,7 +2378,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (inp && inp.value.trim()) {
           await fetch('/api/notes/tags', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authManager.getAuthHeaders() },
             body: JSON.stringify({ name: inp.value.trim().replace(/^#/, '') })
           });
           inp.value = '';
@@ -2224,7 +2403,7 @@ document.addEventListener('DOMContentLoaded', () => {
           try {
             const res = await fetch('/api/notes/categories', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', ...authManager.getAuthHeaders() },
               body: JSON.stringify({ name: name.trim() })
             });
             const data = await res.json();
@@ -2251,7 +2430,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async fetchNotes() {
       try {
-        const res = await fetch(`/api/notes?status=${this.currentStatus}`);
+        const res = await fetch(`/api/notes?status=${this.currentStatus}`, {
+          headers: authManager.getAuthHeaders()
+        });
         const data = await res.json();
         if (data.success) {
           this.notes = data.notes;
@@ -2266,8 +2447,8 @@ document.addEventListener('DOMContentLoaded', () => {
     async loadTaxonomies() {
       try {
         const [cRes, tRes] = await Promise.all([
-          fetch('/api/notes/categories/all'),
-          fetch('/api/notes/tags/all')
+          fetch('/api/notes/categories/all', { headers: authManager.getAuthHeaders() }),
+          fetch('/api/notes/tags/all', { headers: authManager.getAuthHeaders() })
         ]);
         const cData = await cRes.json();
         const tData = await tRes.json();
@@ -2453,15 +2634,15 @@ document.addEventListener('DOMContentLoaded', () => {
         note.isFavorite = !note.isFavorite;
         this.saveNoteDirect(note);
       } else if (action === 'Duplicar') {
-        fetch(`/api/notes/${note.id}/duplicate`, { method: 'POST' }).then(() => this.fetchNotes());
+        fetch(`/api/notes/${note.id}/duplicate`, { method: 'POST', headers: authManager.getAuthHeaders() }).then(() => this.fetchNotes());
       } else if (action.includes('Arquiv') || action.includes('Desarquiv')) {
         note.isArchived = !note.isArchived;
         this.saveNoteDirect(note);
       } else if (action === 'Restaurar') {
-        fetch(`/api/notes/${note.id}/restore`, { method: 'POST' }).then(() => this.fetchNotes());
+        fetch(`/api/notes/${note.id}/restore`, { method: 'POST', headers: authManager.getAuthHeaders() }).then(() => this.fetchNotes());
       } else if (action.includes('lixo')) {
         if (confirm(`Mover "${note.title || 'Nota'}" para o lixo?`)) {
-          fetch(`/api/notes/${note.id}`, { method: 'DELETE' }).then(() => this.fetchNotes());
+          fetch(`/api/notes/${note.id}`, { method: 'DELETE', headers: authManager.getAuthHeaders() }).then(() => this.fetchNotes());
         }
       }
     },
@@ -2587,7 +2768,7 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const res = await fetch('/api/notes', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authManager.getAuthHeaders() },
           body: JSON.stringify(this.activeEditingNote)
         });
         const data = await res.json();
@@ -2608,7 +2789,7 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         await fetch('/api/notes', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authManager.getAuthHeaders() },
           body: JSON.stringify(note)
         });
         this.fetchNotes();
@@ -2619,17 +2800,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     formatNotePreview(text) {
       if (!text) return '(Nota vazia)';
-      if (text.includes('| Segundo elemento |') || text.includes('| :--- |')) {
+      if (text.includes('| :--- |') || text.includes('|:---|')) {
         const lines = text.split('\n')
-          .filter(l => l.trim().startsWith('|') && !l.includes('---') && !l.toLowerCase().includes('segundo elemento'))
+          .filter(l => l.trim().startsWith('|') && !l.includes('---'))
           .map(l => {
             const parts = l.split('|').map(s => s.trim().replace(/\*\*/g, '')).filter(Boolean);
             return parts.length >= 2 ? `${parts[0]}: ${parts[1]}` : parts[0] || '';
           })
           .filter(Boolean);
-        if (lines.length > 0) {
-          return lines.slice(0, 4).join(' • ') + (lines.length > 4 ? '...' : '');
+        if (lines.length > 1) {
+          const dataRows = lines.slice(1);
+          if (dataRows.length > 0) {
+            return dataRows.slice(0, 4).join(' • ') + (dataRows.length > 4 ? '...' : '');
+          }
+          return `📊 ${lines[0]}`;
         }
+        return '📊 Tabela de 2 colunas';
       }
       return text;
     },
@@ -2640,7 +2826,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!modal || !container) return;
 
       container.innerHTML = this.TEMPLATES.map(t => {
-        const isTable = t.id === 'surgical_terminology_table';
+        const isTable = t.id === 'surgical_terminology_table' || t.id === 'powerpoint_table';
+        const isPpt = t.id === 'powerpoint_table';
         return `
           <div class="template-card-item" onclick="notesManager.createNoteFromTemplate('${t.id}')">
             <div class="template-card-icon ${isTable ? 'template-icon-table' : 'template-icon-blank'}">
@@ -2652,14 +2839,21 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="template-card-info">
               <div class="template-card-header">
                 <span class="template-card-name">${escapeHtml(t.name)}</span>
-                ${isTable 
-                  ? `<span class="badge-new-template">Novo Modelo</span>` 
+                ${isPpt 
+                  ? `<span class="badge-new-template">PowerPoint</span>`
+                  : isTable
+                  ? `<span class="badge-new-template">Terminologia</span>` 
                   : `<span class="badge-default-template">Padrão</span>`
                 }
               </div>
               <div class="template-card-desc">${escapeHtml(t.description)}</div>
               <div class="template-card-preview-pill">
-                ${isTable ? '📊 11 termos cirúrgicos & significados • Terracota' : '📝 Anotações livres em branco'}
+                ${isPpt 
+                  ? '📊 2 Colunas • 13 Linhas alternadas • Terracota (PowerPoint)'
+                  : isTable 
+                  ? '📋 Terminologia médica e cirúrgica • Terracota' 
+                  : '📝 Anotações livres em branco'
+                }
               </div>
             </div>
           </div>
@@ -2674,11 +2868,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const modal = document.getElementById('modal-note-templates');
       if (modal) modal.style.display = 'none';
 
+      const isTerracotta = tmpl.id === 'powerpoint_table' || tmpl.id === 'surgical_terminology_table' || tmpl.color === 'terracotta' || tmpl.color === '#c84b15';
       const newNote = {
         id: 'note_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
         title: tmpl.title || '',
         content: tmpl.content || '',
-        color: tmpl.id === 'surgical_terminology_table' ? 'terracotta' : (tmpl.color || 'blue'),
+        color: isTerracotta ? 'terracotta' : (tmpl.color || 'blue'),
         categoryId: null,
         tags: [...(tmpl.tags || [])],
         isPinned: false,
@@ -2692,7 +2887,7 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const res = await fetch('/api/notes', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authManager.getAuthHeaders() },
           body: JSON.stringify(newNote)
         });
         const data = await res.json();
@@ -2750,17 +2945,62 @@ document.addEventListener('DOMContentLoaded', () => {
       switch (cmd) {
         case 'bold': insertion = `**${sel || 'texto em negrito'}**`; break;
         case 'italic': insertion = `*${sel || 'texto em itálico'}*`; break;
+        case 'highlight': insertion = `==${sel || 'texto destacado'}==`; break;
+        case 'color': {
+          const colorPicker = document.getElementById('note-text-color-picker');
+          if (colorPicker) {
+            colorPicker.oninput = (e) => {
+              const chosen = e.target.value;
+              const cur = textarea.value;
+              const b = cur.substring(0, start);
+              const a = cur.substring(end);
+              textarea.value = `${b}<color=${chosen}>${sel || 'texto colorido'}</color>${a}`;
+              textarea.focus();
+              this.updateStats();
+              this.saveCurrentNote();
+            };
+            colorPicker.click();
+            return;
+          }
+          insertion = `<color=#ef4444>${sel || 'texto colorido'}</color>`;
+          break;
+        }
+        case 'fontsize': insertion = `\n# ${sel || 'Título Grande'}\n`; break;
         case 'heading': insertion = `\n## ${sel || 'Título'}\n`; break;
         case 'bullet': insertion = `\n- ${sel || 'Item da lista'}`; break;
         case 'checklist': insertion = `\n- [ ] ${sel || 'Nova tarefa'}`; break;
         case 'code': insertion = `\n\`\`\`\n${sel || '// código aqui'}\n\`\`\`\n`; break;
+        case 'camera': {
+          const fileInp = document.getElementById('note-camera-input');
+          if (fileInp) {
+            fileInp.onchange = (e) => {
+              if (e.target.files && e.target.files[0]) {
+                this.handleImageUpload(e.target.files[0], 'Foto da Câmera');
+              }
+            };
+            fileInp.click();
+          }
+          return;
+        }
+        case 'gallery': {
+          const fileInp = document.getElementById('note-gallery-input');
+          if (fileInp) {
+            fileInp.onchange = (e) => {
+              if (e.target.files && e.target.files[0]) {
+                this.handleImageUpload(e.target.files[0], 'Foto');
+              }
+            };
+            fileInp.click();
+          }
+          return;
+        }
         case 'template-table': {
-          const tmpl = this.TEMPLATES.find(t => t.id === 'surgical_terminology_table');
+          const tmpl = this.TEMPLATES.find(t => t.id === 'powerpoint_table') || this.TEMPLATES.find(t => t.id === 'surgical_terminology_table');
           const tableContent = tmpl ? tmpl.content : '';
           insertion = (text.trim().length > 0 ? '\n\n' : '') + tableContent;
           const titleInp = document.getElementById('editor-note-title');
           if (titleInp && !titleInp.value) {
-            titleInp.value = tmpl ? tmpl.title : 'Segundo Elemento e Significado';
+            titleInp.value = tmpl ? tmpl.title : 'Tabela';
             if (this.activeEditingNote) this.activeEditingNote.title = titleInp.value;
           }
           if (this.activeEditingNote) {
@@ -2775,6 +3015,28 @@ document.addEventListener('DOMContentLoaded', () => {
       textarea.focus();
       this.updateStats();
       this.saveCurrentNote();
+    },
+
+    handleImageUpload(file, defaultAlt) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target.result;
+        const textarea = document.getElementById('editor-note-content');
+        if (!textarea) return;
+        const start = textarea.selectionStart || textarea.value.length;
+        const end = textarea.selectionEnd || textarea.value.length;
+        const cur = textarea.value;
+        const before = cur.substring(0, start);
+        const after = cur.substring(end);
+        const insert = `\n\n![${defaultAlt}](${dataUrl})\n\n`;
+        textarea.value = before + insert + after;
+        textarea.focus();
+        this.updateStats();
+        this.saveCurrentNote();
+        showToast('Foto inserida na nota!');
+      };
+      reader.readAsDataURL(file);
     },
 
     async generateNoteWithAi(topic) {
@@ -2912,7 +3174,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async deleteCategory(id) {
       if (confirm('Eliminar esta categoria? As notas não serão apagadas.')) {
-        await fetch(`/api/notes/categories/${id}`, { method: 'DELETE' });
+        await fetch(`/api/notes/categories/${id}`, { method: 'DELETE', headers: authManager.getAuthHeaders() });
         await this.loadTaxonomies();
         this.renderTaxonomiesModal();
         this.renderTaxonomyFilters();
@@ -2922,7 +3184,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async deleteTag(name) {
       if (confirm(`Remover etiqueta #${name}?`)) {
-        await fetch(`/api/notes/tags/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        await fetch(`/api/notes/tags/${encodeURIComponent(name)}`, { method: 'DELETE', headers: authManager.getAuthHeaders() });
         await this.loadTaxonomies();
         this.renderTaxonomiesModal();
         this.renderTaxonomyFilters();
@@ -2932,6 +3194,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   window.notesManager = notesManager;
+  authManager.init();
   notesManager.init();
 
   /* ==========================================================================

@@ -18,6 +18,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
@@ -145,12 +146,28 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
 
     fun enableMediaProjectionForeground() {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(
-                    NOTIFICATION_ID,
-                    buildNotification(),
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-                )
+                } else {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                }
+                try {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        buildNotification(),
+                        serviceType
+                    )
+                } catch (inner: Exception) {
+                    // Fallback para apenas MEDIA_PROJECTION se combinação de flags falhar
+                    startForeground(
+                        NOTIFICATION_ID,
+                        buildNotification(),
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                    )
+                }
+            } else {
+                startForeground(NOTIFICATION_ID, buildNotification())
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -165,6 +182,14 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
                     buildNotification(),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
                 )
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(),
+                    0
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, buildNotification())
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -173,6 +198,9 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent != null) {
+            if (intent.getBooleanExtra("enable_projection", false)) {
+                enableMediaProjectionForeground()
+            }
             val sharedText = intent.getStringExtra("shared_text")
             val sharedImage = intent.getStringExtra("shared_image")
             if (!sharedText.isNullOrBlank() || !sharedImage.isNullOrBlank()) {
@@ -297,6 +325,117 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
         AppSettings.saveBubbleSize(this, sizeDp)
     }
 
+    private var dismissTargetView: FrameLayout? = null
+    private var dismissTargetCircle: LinearLayout? = null
+    private var isOverDismissTarget = false
+
+    private fun showDismissTarget() {
+        if (dismissTargetView != null || windowManager == null) return
+        val size = dpToPx(72)
+        val view = FrameLayout(this).apply {
+            val circle = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#E6090D16"))
+                    setStroke(dpToPx(2), Color.parseColor("#EF4444"))
+                }
+                elevation = 24f
+
+                val icon = ImageView(context).apply {
+                    setImageResource(com.example.aiquestionassistant.R.drawable.ic_close)
+                    setColorFilter(Color.parseColor("#EF4444"))
+                }
+                addView(icon, LinearLayout.LayoutParams(dpToPx(28), dpToPx(28)))
+
+                val label = TextView(context).apply {
+                    text = "Fechar"
+                    setTextColor(Color.parseColor("#EF4444"))
+                    textSize = 10f
+                    typeface = Typeface.DEFAULT_BOLD
+                }
+                addView(label)
+            }
+            dismissTargetCircle = circle
+            addView(circle, FrameLayout.LayoutParams(size, size).apply {
+                gravity = Gravity.CENTER
+            })
+        }
+
+        val params = WindowManager.LayoutParams(
+            dpToPx(130), dpToPx(110),
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = dpToPx(36)
+        }
+
+        try {
+            windowManager?.addView(view, params)
+            dismissTargetView = view
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun updateDismissTargetState(isHovering: Boolean) {
+        if (isOverDismissTarget == isHovering) return
+        isOverDismissTarget = isHovering
+
+        dismissTargetCircle?.let { circle ->
+            if (isHovering) {
+                circle.animate().scaleX(1.25f).scaleY(1.25f).setDuration(120).start()
+                circle.background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#DC2626"))
+                    setStroke(dpToPx(3), Color.WHITE)
+                }
+                (circle.getChildAt(0) as? ImageView)?.setColorFilter(Color.WHITE)
+                (circle.getChildAt(1) as? TextView)?.setTextColor(Color.WHITE)
+                vibrateShort()
+            } else {
+                circle.animate().scaleX(1.0f).scaleY(1.0f).setDuration(120).start()
+                circle.background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#E6090D16"))
+                    setStroke(dpToPx(2), Color.parseColor("#EF4444"))
+                }
+                (circle.getChildAt(0) as? ImageView)?.setColorFilter(Color.parseColor("#EF4444"))
+                (circle.getChildAt(1) as? TextView)?.setTextColor(Color.parseColor("#EF4444"))
+            }
+        }
+    }
+
+    private fun hideDismissTarget() {
+        dismissTargetView?.let {
+            try {
+                windowManager?.removeView(it)
+            } catch (_: Exception) {}
+            dismissTargetView = null
+            dismissTargetCircle = null
+        }
+        isOverDismissTarget = false
+    }
+
+    private fun vibrateShort() {
+        try {
+            val v = getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                v?.vibrate(android.os.VibrationEffect.createOneShot(40, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                v?.vibrate(40)
+            }
+        } catch (_: Exception) {}
+    }
+
     private fun setupBubbleTouchListener() {
         bubbleView?.setOnTouchListener(object : View.OnTouchListener {
             private var initialX = 0
@@ -304,6 +443,7 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
             private var initialTouchX = 0f
             private var initialTouchY = 0f
             private var isClick = false
+            private var isDragging = false
 
             override fun onTouch(v: View, event: MotionEvent): Boolean {
                 val params = bubbleParams ?: return false
@@ -314,22 +454,60 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
                         initialTouchX = event.rawX
                         initialTouchY = event.rawY
                         isClick = true
+                        isDragging = false
                         return true
                     }
                     MotionEvent.ACTION_MOVE -> {
                         val dx = (event.rawX - initialTouchX).toInt()
                         val dy = (event.rawY - initialTouchY).toInt()
-                        if (Math.abs(dx) > 12 || Math.abs(dy) > 12) {
-                            isClick = false
+                        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                            if (!isDragging) {
+                                isDragging = true
+                                isClick = false
+                                showDismissTarget()
+                            }
                         }
-                        params.x = initialX + dx
-                        params.y = initialY + dy
-                        try {
-                            windowManager?.updateViewLayout(bubbleView, params)
-                        } catch (_: Exception) {}
+
+                        if (isDragging) {
+                            params.x = initialX + dx
+                            params.y = initialY + dy
+                            try {
+                                windowManager?.updateViewLayout(bubbleView, params)
+                            } catch (_: Exception) {}
+
+                            // Verifica proximidade do alvo "X" de fechar
+                            val screenW = resources.displayMetrics.widthPixels
+                            val screenH = resources.displayMetrics.heightPixels
+                            val targetCenterX = screenW / 2
+                            val targetCenterY = screenH - dpToPx(36) - dpToPx(55)
+
+                            val bubbleW = v.width.takeIf { it > 0 } ?: dpToPx(56)
+                            val bubbleH = v.height.takeIf { it > 0 } ?: dpToPx(56)
+                            val bubbleCenterX = params.x + bubbleW / 2
+                            val bubbleCenterY = params.y + bubbleH / 2
+
+                            val distance = Math.hypot(
+                                (bubbleCenterX - targetCenterX).toDouble(),
+                                (bubbleCenterY - targetCenterY).toDouble()
+                            )
+
+                            // Se o usuário arrastar a bolha para o alvo X, ativa o modo de fechar
+                            val isNear = distance < dpToPx(95)
+                            updateDismissTargetState(isNear)
+                        }
                         return true
                     }
                     MotionEvent.ACTION_UP -> {
+                        val wasOverDismiss = isOverDismissTarget
+                        hideDismissTarget()
+
+                        if (wasOverDismiss) {
+                            vibrateShort()
+                            Toast.makeText(this@FloatingBubbleService, "Assistente flutuante fechado", Toast.LENGTH_SHORT).show()
+                            stopSelf()
+                            return true
+                        }
+
                         if (isClick) {
                             toggleAssistantPanel()
                         } else {
@@ -341,6 +519,10 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
                                 AppSettings.saveBubblePosition(this@FloatingBubbleService, params.x, params.y)
                             } catch (_: Exception) {}
                         }
+                        return true
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        hideDismissTarget()
                         return true
                     }
                 }
@@ -598,25 +780,99 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
                 setColor(Color.parseColor("#111827"))
                 setStroke(dpToPx(1), Color.parseColor("#1F2937"))
             }
-            setPadding(dpToPx(12), dpToPx(8), dpToPx(8), dpToPx(8))
+            setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
 
-            val contextText = TextView(context).apply {
-                textSize = 12f
-
-                if (!currentCapturedImageBase64.isNullOrBlank()) {
-                    text = "📸 Imagem capturada (Pronta para resolver)"
-                    setTextColor(Color.parseColor("#38BDF8"))
-                    typeface = Typeface.DEFAULT_BOLD
-                } else if (!currentCapturedText.isNullOrBlank()) {
-                    val snippet = currentCapturedText!!.take(35).replace("\n", " ")
-                    text = "Texto: \"$snippet...\""
-                    setTextColor(Color.parseColor("#94A3B8"))
-                } else {
-                    text = "Capturar ou colar texto de apoio"
-                    setTextColor(Color.parseColor("#94A3B8"))
+            val capturedBitmap: Bitmap? = if (!currentCapturedImageBase64.isNullOrBlank()) {
+                try {
+                    val bytes = Base64.decode(currentCapturedImageBase64, Base64.DEFAULT)
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                } catch (_: Exception) {
+                    null
                 }
+            } else null
+
+            // Miniatura visual da captura do ecrã (se existir)
+            if (capturedBitmap != null) {
+                val thumbView = ImageView(context).apply {
+                    setImageBitmap(capturedBitmap)
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    background = GradientDrawable().apply {
+                        cornerRadius = dpToPx(8).toFloat()
+                        setColor(Color.parseColor("#1E293B"))
+                        setStroke(dpToPx(2), Color.parseColor("#38BDF8"))
+                    }
+                    clipToOutline = true
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener {
+                        showFullImagePreviewDialog(capturedBitmap)
+                    }
+                }
+                addView(thumbView, LinearLayout.LayoutParams(dpToPx(46), dpToPx(46)).apply {
+                    setMargins(0, 0, dpToPx(10), 0)
+                })
+
+                val textCol = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_VERTICAL
+
+                    val titleText = TextView(context).apply {
+                        text = "📸 Captura Pronta"
+                        setTextColor(Color.parseColor("#38BDF8"))
+                        textSize = 12f
+                        typeface = Typeface.DEFAULT_BOLD
+                    }
+                    addView(titleText)
+
+                    val subText = TextView(context).apply {
+                        text = "Toque p/ ampliar (${capturedBitmap.width}×${capturedBitmap.height})"
+                        setTextColor(Color.parseColor("#94A3B8"))
+                        textSize = 10f
+                    }
+                    addView(subText)
+                }
+                addView(textCol, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+
+                // Botão Ver / Ampliar
+                val btnPreview = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    background = GradientDrawable().apply {
+                        cornerRadius = dpToPx(8).toFloat()
+                        setColor(Color.parseColor("#0F2B48"))
+                        setStroke(dpToPx(1), Color.parseColor("#38BDF8"))
+                    }
+                    setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+
+                    val label = TextView(context).apply {
+                        text = "👁 Ver"
+                        setTextColor(Color.parseColor("#38BDF8"))
+                        textSize = 11f
+                        typeface = Typeface.DEFAULT_BOLD
+                    }
+                    addView(label)
+
+                    setOnClickListener {
+                        showFullImagePreviewDialog(capturedBitmap)
+                    }
+                }
+                addView(btnPreview, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, dpToPx(6), 0)
+                })
+            } else {
+                val contextText = TextView(context).apply {
+                    textSize = 12f
+                    if (!currentCapturedText.isNullOrBlank()) {
+                        val snippet = currentCapturedText!!.take(35).replace("\n", " ")
+                        text = "Texto: \"$snippet...\""
+                        setTextColor(Color.parseColor("#94A3B8"))
+                    } else {
+                        text = "Capturar ou colar texto de apoio"
+                        setTextColor(Color.parseColor("#94A3B8"))
+                    }
+                }
+                addView(contextText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             }
-            addView(contextText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
 
             // Ação: Capturar Ecrã (com ícone de câmera)
             val btnCapture = LinearLayout(context).apply {
@@ -715,6 +971,98 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
                     setMargins(dpToPx(4), 0, 0, 0)
                 })
             }
+        }
+    }
+
+    private fun showFullImagePreviewDialog(bitmap: Bitmap) {
+        val wm = windowManager ?: return
+        val previewLayout = FrameLayout(this).apply {
+            background = ColorDrawable(Color.parseColor("#E6090D16"))
+            isClickable = true
+            isFocusable = true
+        }
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(16), dpToPx(16), dpToPx(16), dpToPx(16))
+        }
+
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dpToPx(12))
+
+            val title = TextView(context).apply {
+                text = "Pré-visualização da Captura"
+                setTextColor(Color.WHITE)
+                textSize = 15f
+                typeface = Typeface.DEFAULT_BOLD
+            }
+            addView(title, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+
+            val resolution = TextView(context).apply {
+                text = "${bitmap.width} × ${bitmap.height} px"
+                setTextColor(Color.parseColor("#38BDF8"))
+                textSize = 12f
+                setPadding(0, 0, dpToPx(12), 0)
+            }
+            addView(resolution)
+
+            val btnClose = ImageView(context).apply {
+                setImageResource(com.example.aiquestionassistant.R.drawable.ic_close)
+                setColorFilter(Color.parseColor("#EF4444"))
+                val pad = dpToPx(6)
+                setPadding(pad, pad, pad, pad)
+            }
+            addView(btnClose, LinearLayout.LayoutParams(dpToPx(32), dpToPx(32)))
+        }
+        container.addView(topBar)
+
+        val screenHeight = resources.displayMetrics.heightPixels
+        val imageView = ImageView(this).apply {
+            setImageBitmap(bitmap)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            background = GradientDrawable().apply {
+                cornerRadius = dpToPx(12).toFloat()
+                setColor(Color.parseColor("#111827"))
+                setStroke(dpToPx(1), Color.parseColor("#38BDF8"))
+            }
+            clipToOutline = true
+        }
+        container.addView(imageView, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            (screenHeight * 0.65).toInt()
+        ))
+
+        previewLayout.addView(container, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        )
+
+        topBar.getChildAt(2).setOnClickListener {
+            try { wm.removeView(previewLayout) } catch (_: Exception) {}
+        }
+        previewLayout.setOnClickListener {
+            try { wm.removeView(previewLayout) } catch (_: Exception) {}
+        }
+
+        try {
+            wm.addView(previewLayout, params)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -1284,6 +1632,10 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
                 options = AssistantActionOptions(targetLanguage = settings.preferredLanguage)
             )
 
+            // Limpa o contexto capturado após a execução para evitar que persista em futuras perguntas/ações
+            currentCapturedText = null
+            currentCapturedImageBase64 = null
+
             lastResult = result
 
             if (result.isSuccess) {
@@ -1469,6 +1821,7 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
             speechRecognizer?.destroy()
         } catch (_: Exception) {}
         hideAssistantPanel()
+        hideDismissTarget()
         bubbleView?.let {
             try {
                 windowManager?.removeView(it)

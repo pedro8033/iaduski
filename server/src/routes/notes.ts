@@ -1,7 +1,9 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { z } from 'zod';
 import type { NotesRepository } from '../services/notesRepository';
 import type { NotesAiService } from '../services/notesAiService';
+import { supabaseService } from '../services/supabaseService';
+import type { NoteTemplate } from '../types/notes';
 
 const noteSchema = z.object({
   id: z.string().optional(),
@@ -50,8 +52,6 @@ const noteAiActionSchema = z.object({
   language: z.string().optional(),
 });
 
-import type { NoteTemplate } from '../types/notes';
-
 export const DEFAULT_NOTE_TEMPLATES: NoteTemplate[] = [
   {
     id: 'default_blank',
@@ -69,29 +69,64 @@ export const DEFAULT_NOTE_TEMPLATES: NoteTemplate[] = [
     title: 'Segundo Elemento e Significado',
     content: `| Segundo elemento | Significado |
 | :--- | :--- |
-| **-algia/algo** | Dor |
-| **-cele** | Tumor; hérnia |
-| **-centese** | Punção; orifício |
-| **-ectomia** | Remoção parcial ou total |
-| **-oma** | Tumor |
-| **-pexia** | Fixação de um órgão |
-| **-plastia** | Reconstituição de uma parte do corpo |
-| **-rafia** | Sutura |
-| **-scopia** | Ato de ver; observar |
-| **-stomia** | Comunicação entre dois órgãos ocos ou entre um órgão e a pele |
-| **-tomia** | Corte ; abertura |`,
+| | |
+| | |
+| | |
+| | |
+| | |`,
     color: '#c84b15',
     tags: ['terminologia', 'cirurgia', 'sufixos'],
+  },
+  {
+    id: 'powerpoint_table',
+    name: 'Tabela PowerPoint (2 Colunas)',
+    description: 'Modelo de tabela de 2 colunas estilo PowerPoint com cabeçalho terracota e 13 linhas alternadas',
+    title: 'Tabela',
+    content: `| Coluna 1 | Coluna 2 |
+| :--- | :--- |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |`,
+    color: '#c84b15',
+    tags: ['tabela', 'powerpoint', 'comparativo'],
   },
 ];
 
 export function createNotesRouter(repo: NotesRepository, aiService: NotesAiService): Router {
   const router = Router();
 
-  // Helper para obter userId (se fornecido via header ou query)
-  const getUserId = (req: any): string | undefined => {
+  // Helper assíncrono para extrair userId autenticado (Supabase JWT com fallback para headers/query)
+  const resolveUserId = async (req: Request): Promise<string | undefined> => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const verified = await supabaseService.verifyUserToken(authHeader);
+      if (verified?.id) {
+        return verified.id;
+      }
+    }
     return (req.headers['x-user-id'] as string) || (req.query.userId as string) || undefined;
   };
+
+  // Status de conexão e configuração do Supabase
+  router.get('/config/supabase', (_req, res) => {
+    const config = supabaseService.getPublicConfig();
+    res.json({
+      success: true,
+      configured: config.isConfigured,
+      supabaseUrl: config.url,
+      supabaseAnonKey: config.anonKey,
+    });
+  });
 
   // 0. Obter modelos / templates disponíveis
   router.get('/templates', (_req, res) => {
@@ -102,10 +137,10 @@ export function createNotesRouter(repo: NotesRepository, aiService: NotesAiServi
   });
 
   // 1. Listar notas com filtros e pesquisa
-  router.get('/', (req, res) => {
+  router.get('/', async (req, res) => {
     try {
-      const userId = getUserId(req);
-      let notes = repo.getAllNotes(userId);
+      const userId = await resolveUserId(req);
+      let notes = await repo.getAllNotes(userId);
 
       const { q, categoryId, tag, color, status, sort } = req.query as {
         q?: string;
@@ -172,17 +207,17 @@ export function createNotesRouter(repo: NotesRepository, aiService: NotesAiServi
         return b.updatedAt - a.updatedAt;
       });
 
-      res.json({ success: true, notes });
+      res.json({ success: true, notes, userId: userId || null });
     } catch (err) {
       res.status(500).json({ success: false, error: (err as Error).message });
     }
   });
 
   // 2. Obter nota por ID
-  router.get('/:id', (req, res) => {
+  router.get('/:id', async (req, res) => {
     try {
-      const userId = getUserId(req);
-      const note = repo.getNoteById(req.params.id, userId);
+      const userId = await resolveUserId(req);
+      const note = await repo.getNoteById(req.params.id, userId);
       if (!note) {
         res.status(404).json({ success: false, error: 'Nota não encontrada' });
         return;
@@ -194,20 +229,20 @@ export function createNotesRouter(repo: NotesRepository, aiService: NotesAiServi
   });
 
   // 3. Criar ou atualizar nota
-  router.post('/', (req, res) => {
+  router.post('/', async (req, res) => {
     const parsed = noteSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ success: false, error: 'Dados inválidos', details: parsed.error.issues });
       return;
     }
     try {
-      const userId = getUserId(req);
+      const resolvedUser = await resolveUserId(req);
       const data = parsed.data;
       const noteId = data.id || 'note_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
 
-      const saved = repo.saveNote({
+      const saved = await repo.saveNote({
         id: noteId,
-        userId: userId || data.userId,
+        userId: resolvedUser || data.userId,
         title: data.title || '',
         content: data.content || '',
         color: data.color || 'default',
@@ -229,17 +264,18 @@ export function createNotesRouter(repo: NotesRepository, aiService: NotesAiServi
   });
 
   // 4. Duplicar nota
-  router.post('/:id/duplicate', (req, res) => {
+  router.post('/:id/duplicate', async (req, res) => {
     try {
-      const userId = getUserId(req);
-      const original = repo.getNoteById(req.params.id, userId);
+      const userId = await resolveUserId(req);
+      const original = await repo.getNoteById(req.params.id, userId);
       if (!original) {
         res.status(404).json({ success: false, error: 'Nota original não encontrada' });
         return;
       }
-      const duplicate = repo.saveNote({
+      const duplicate = await repo.saveNote({
         ...original,
         id: 'note_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        userId: userId || original.userId,
         title: original.title ? `${original.title} (Cópia)` : 'Nova Nota (Cópia)',
         isPinned: false,
         createdAt: Date.now(),
@@ -252,11 +288,11 @@ export function createNotesRouter(repo: NotesRepository, aiService: NotesAiServi
   });
 
   // 5. Eliminar nota (soft delete para lixeira ou permanente)
-  router.delete('/:id', (req, res) => {
+  router.delete('/:id', async (req, res) => {
     try {
-      const userId = getUserId(req);
+      const userId = await resolveUserId(req);
       const permanent = req.query.permanent === 'true';
-      const ok = repo.deleteNote(req.params.id, permanent, userId);
+      const ok = await repo.deleteNote(req.params.id, permanent, userId);
       if (!ok) {
         res.status(404).json({ success: false, error: 'Nota não encontrada' });
         return;
@@ -268,10 +304,10 @@ export function createNotesRouter(repo: NotesRepository, aiService: NotesAiServi
   });
 
   // 6. Restaurar nota do lixo
-  router.post('/:id/restore', (req, res) => {
+  router.post('/:id/restore', async (req, res) => {
     try {
-      const userId = getUserId(req);
-      const ok = repo.restoreNote(req.params.id, userId);
+      const userId = await resolveUserId(req);
+      const ok = await repo.restoreNote(req.params.id, userId);
       if (!ok) {
         res.status(404).json({ success: false, error: 'Nota não encontrada' });
         return;
@@ -282,81 +318,93 @@ export function createNotesRouter(repo: NotesRepository, aiService: NotesAiServi
     }
   });
 
+  // ==========================================
   // CATEGORIAS
-  router.get('/categories/all', (_req, res) => {
+  // ==========================================
+  router.get('/categories/all', async (req, res) => {
     try {
-      const categories = repo.getCategories();
+      const userId = await resolveUserId(req);
+      const categories = await repo.getCategories(userId);
       res.json({ success: true, categories });
     } catch (err) {
       res.status(500).json({ success: false, error: (err as Error).message });
     }
   });
 
-  router.post('/categories', (req, res) => {
+  router.post('/categories', async (req, res) => {
     const parsed = categorySchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ success: false, error: 'Nome de categoria inválido' });
       return;
     }
     try {
-      const cat = repo.saveCategory({
+      const userId = await resolveUserId(req);
+      const cat = await repo.saveCategory({
         id: parsed.data.id || 'cat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
         name: parsed.data.name.trim(),
         color: parsed.data.color,
         icon: parsed.data.icon,
         description: parsed.data.description,
         createdAt: Date.now(),
-      });
+      }, userId);
       res.json({ success: true, category: cat });
     } catch (err) {
       res.status(500).json({ success: false, error: (err as Error).message });
     }
   });
 
-  router.delete('/categories/:id', (req, res) => {
+  router.delete('/categories/:id', async (req, res) => {
     try {
+      const userId = await resolveUserId(req);
       const reassign = (req.query.reassign as string) || null;
-      const ok = repo.deleteCategory(req.params.id, reassign);
+      const ok = await repo.deleteCategory(req.params.id, reassign, userId);
       res.json({ success: ok });
     } catch (err) {
       res.status(500).json({ success: false, error: (err as Error).message });
     }
   });
 
-  // ETIQUETAS
-  router.get('/tags/all', (_req, res) => {
+  // ==========================================
+  // ETIQUETAS (TAGS)
+  // ==========================================
+  router.get('/tags/all', async (req, res) => {
     try {
-      const tags = repo.getTags();
+      const userId = await resolveUserId(req);
+      const tags = await repo.getTags(userId);
       res.json({ success: true, tags });
     } catch (err) {
       res.status(500).json({ success: false, error: (err as Error).message });
     }
   });
 
-  router.post('/tags', (req, res) => {
+  router.post('/tags', async (req, res) => {
     const { name, color } = req.body ?? {};
     if (!name || typeof name !== 'string' || !name.trim()) {
       res.status(400).json({ success: false, error: 'Nome da etiqueta é obrigatório' });
       return;
     }
     try {
-      const tag = repo.saveTag(name.trim(), color);
+      const userId = await resolveUserId(req);
+      const tag = await repo.saveTag(name.trim(), color, userId);
       res.json({ success: true, tag });
     } catch (err) {
       res.status(500).json({ success: false, error: (err as Error).message });
     }
   });
 
-  router.delete('/tags/:name', (req, res) => {
+  router.delete('/tags/:name', async (req, res) => {
     try {
-      const ok = repo.deleteTag(req.params.name);
+      const userId = await resolveUserId(req);
+      const ok = await repo.deleteTag(req.params.name, userId);
       res.json({ success: ok });
     } catch (err) {
       res.status(500).json({ success: false, error: (err as Error).message });
     }
   });
 
+  // ==========================================
   // IA PARA NOTAS
+  // ==========================================
   router.post('/ai', async (req, res) => {
     const parsed = noteAiActionSchema.safeParse(req.body);
     if (!parsed.success) {

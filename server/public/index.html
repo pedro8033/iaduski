@@ -13,6 +13,8 @@
   <!-- Markdown & Mermaid -->
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <!-- Supabase Client SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="chatgpt-body">
   <div class="chatgpt-layout">
@@ -66,7 +68,10 @@
 
         <!-- Seção Recentes -->
         <div class="sidebar-section">
-          <div class="section-title">Recentes</div>
+          <div class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Recentes</span>
+            <button type="button" class="btn-clear-all-history" id="btn-clear-all-history" title="Limpar todo o histórico de conversas" style="display: none; background: transparent; border: none; color: #94a3b8; font-size: 11px; cursor: pointer; padding: 2px 4px; border-radius: 4px; transition: color 0.15s ease;">Limpar tudo</button>
+          </div>
           <div class="recent-chats-list" id="recent-chats-list">
             <!-- Gerado via JS a partir do histórico -->
           </div>
@@ -75,11 +80,11 @@
 
       <!-- Rodapé do Perfil -->
       <div class="sidebar-footer">
-        <div class="user-profile-btn" id="btn-user-profile">
-          <div class="user-avatar">CD</div>
+        <div class="user-profile-btn" id="btn-user-profile" title="Sessão & Conta">
+          <div class="user-avatar" id="user-avatar-display">G</div>
           <div class="user-info">
-            <div class="user-name">Cláudio</div>
-            <div class="user-plan" id="current-engine-label">Gemini Pro / Flash</div>
+            <div class="user-name" id="user-name-display">Visitante</div>
+            <div class="user-plan" id="user-status-display">Sincronização Cloud</div>
           </div>
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
         </div>
@@ -102,7 +107,12 @@
           </div>
         </div>
 
-        <div class="topbar-right">
+          <!-- Indicador de Sincronização Supabase Cloud -->
+          <button class="topbar-auth-btn" id="btn-topbar-auth" title="Sincronização Supabase Cloud">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="#3ecf8e"><path d="M21.362 9.354H12V.396a.396.396 0 0 0-.716-.233L2.2 12.604a.396.396 0 0 0 .32.638H12v8.958a.396.396 0 0 0 .716.233l9.084-12.441a.396.396 0 0 0-.438-.638z"/></svg>
+            <span id="topbar-auth-label">Supabase Cloud</span>
+          </button>
+
           <!-- Botão de Definições (Abre Definições → Inteligência Artificial) -->
           <button class="topbar-settings-btn" id="btn-open-settings" title="Definições → Inteligência Artificial">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
@@ -296,6 +306,10 @@
             <div class="notes-header-left">
               <h2 class="notes-title">Notas</h2>
               <span class="notes-count-badge" id="notes-total-count">0 notas</span>
+              <button class="notes-cloud-sync-badge" id="btn-cloud-sync-status" title="Estado da Sincronização na Nuvem">
+                <span class="cloud-sync-dot" id="cloud-sync-dot"></span>
+                <span id="cloud-sync-label">Local (Offline)</span>
+              </button>
             </div>
             <div class="notes-header-actions">
               <button class="btn-primary-note" id="btn-web-new-note">
@@ -411,11 +425,18 @@
             <div class="note-formatting-toolbar">
               <button type="button" class="fmt-btn" data-cmd="bold" title="Negrito"><b>B</b></button>
               <button type="button" class="fmt-btn" data-cmd="italic" title="Itálico"><i>I</i></button>
-              <button type="button" class="fmt-btn" data-cmd="heading" title="Título">H2</button>
+              <button type="button" class="fmt-btn" data-cmd="highlight" title="Destacar Texto">🖍 Destacar</button>
+              <button type="button" class="fmt-btn" data-cmd="color" title="Mudar Cor do Texto">🎨 Cor</button>
+              <input type="color" id="note-text-color-picker" style="display:none;" value="#ef4444" />
+              <button type="button" class="fmt-btn" data-cmd="fontsize" title="Aumentar Tamanho">🗚 Tamanho</button>
+              <button type="button" class="fmt-btn" data-cmd="heading" title="Título H2">H2</button>
               <button type="button" class="fmt-btn" data-cmd="bullet" title="Lista com marcadores">• Lista</button>
               <button type="button" class="fmt-btn" data-cmd="checklist" title="Checklist de Tarefas">☑ Tarefas</button>
-              <button type="button" class="fmt-btn" data-cmd="code" title="Bloco de código">&lt;/&gt;</button>
-              <button type="button" class="fmt-btn fmt-btn-accent" data-cmd="template-table" title="Inserir Modelo Tabela (Segundo elemento)">📋 Tabela</button>
+              <button type="button" class="fmt-btn" data-cmd="camera" title="Tirar foto diretamente com a câmera">📸 Câmera</button>
+              <button type="button" class="fmt-btn" data-cmd="gallery" title="Inserir foto do dispositivo">🖼 Foto</button>
+              <input type="file" id="note-camera-input" accept="image/*" capture="environment" style="display:none;" />
+              <input type="file" id="note-gallery-input" accept="image/*" style="display:none;" />
+              <button type="button" class="fmt-btn fmt-btn-accent" data-cmd="template-table" title="Inserir Modelo Tabela PowerPoint (2 Colunas)">📋 Tabela</button>
               <button type="button" class="fmt-btn" id="btn-toggle-note-preview" title="Alternar Pré-visualização">👁 Ver</button>
               <div class="word-counter-stats" id="word-counter-stats">0 palavras • 0 carateres</div>
             </div>
@@ -598,6 +619,52 @@
                 <button type="button" id="btn-submit-new-tag" style="background: #059669; color: #fff; border: none; padding: 0.45rem 0.85rem; border-radius: 6px; font-weight: 600; cursor: pointer;">+</button>
               </div>
               <div id="modal-tags-list" style="display: flex; flex-wrap: wrap; gap: 0.4rem;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODAL DE CONEXÃO & SINCRONIZAÇÃO SUPABASE CLOUD -->
+        <div class="modal-backdrop" id="modal-auth" style="display: none;">
+          <div class="modal-card auth-modal-card" style="max-width: 480px;">
+            <div class="modal-header auth-modal-header">
+              <div class="auth-header-title-wrap">
+                <div class="auth-supabase-badge-icon">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="#3ecf8e"><path d="M21.362 9.354H12V.396a.396.396 0 0 0-.716-.233L2.2 12.604a.396.396 0 0 0 .32.638H12v8.958a.396.396 0 0 0 .716.233l9.084-12.441a.396.396 0 0 0-.438-.638z"/></svg>
+                </div>
+                <div>
+                  <h3 style="margin: 0; font-size: 1.15rem; color: #fff;">Sincronização Supabase Cloud</h3>
+                  <p style="margin: 2px 0 0 0; font-size: 0.8rem; color: var(--text-dim);">Banco de dados em nuvem para os seus Blocos de Notas</p>
+                </div>
+              </div>
+              <button class="btn-close-modal" id="btn-close-auth-modal">✕</button>
+            </div>
+            <div class="modal-body auth-modal-body" style="padding: 1.5rem;">
+              <div class="auth-cloud-intro">
+                <div class="cloud-status-indicator-box" id="cloud-connection-status-box" style="margin-bottom: 1rem;">
+                  <span class="cloud-dot-status" id="modal-cloud-dot"></span>
+                  <span id="modal-cloud-status-text">A verificar ligação ao Supabase...</span>
+                </div>
+                <p class="auth-intro-desc" style="margin-bottom: 1.25rem;">
+                  O seu Bloco de Notas sincroniza diretamente com o <strong>Supabase</strong>. As notas, categorias e etiquetas criadas são salvas e recuperadas em tempo real.
+                </p>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 1rem; margin-bottom: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 0.5rem;">
+                  <span style="color: #a1a1aa;">Estado do Banco:</span>
+                  <span id="modal-cloud-db-label" style="font-weight: 600; color: #3ecf8e;">Ativo</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
+                  <span style="color: #a1a1aa;">Serviço:</span>
+                  <span style="color: #3ecf8e; font-weight: 500;">Supabase PostgreSQL</span>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 0.75rem;">
+                <button type="button" class="btn-sync-now" id="btn-sync-notes-cloud" style="flex: 1; padding: 0.75rem; background: #2563eb; border: none; color: #fff; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                  🔄 Sincronizar Notas Agora
+                </button>
+              </div>
             </div>
           </div>
         </div>

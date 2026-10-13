@@ -112,7 +112,7 @@ object NoteTemplates {
         tags = emptyList()
     )
 
-    // Novo modelo anexado pelo usuário: Terminologia Cirúrgica / Médica (Segundo elemento e Significado)
+    // Modelo de Terminologia Cirúrgica / Médica (Segundo elemento e Significado) mantido e limpo
     val SURGICAL_TERMINOLOGY = NoteTemplate(
         id = "surgical_terminology_table",
         name = "Tabela: Segundo elemento & Significado",
@@ -121,22 +121,43 @@ object NoteTemplates {
         content = """
 | Segundo elemento | Significado |
 | :--- | :--- |
-| **-algia/algo** | Dor |
-| **-cele** | Tumor; hérnia |
-| **-centese** | Punção; orifício |
-| **-ectomia** | Remoção parcial ou total |
-| **-oma** | Tumor |
-| **-pexia** | Fixação de um órgão |
-| **-plastia** | Reconstituição de uma parte do corpo |
-| **-rafia** | Sutura |
-| **-scopia** | Ato de ver; observar |
-| **-stomia** | Comunicação entre dois órgãos ocos ou entre um órgão e a pele |
-| **-tomia** | Corte ; abertura |
+| | |
+| | |
+| | |
+| | |
+| | |
         """.trimIndent(),
         color = "#c84b15",
         tags = listOf("terminologia", "cirurgia", "sufixos")
     )
 
-    val ALL = listOf(BLANK, SURGICAL_TERMINOLOGY)
+    // Novo modelo PowerPoint 2 colunas anexado pelo usuário (13 linhas e cabeçalho terracota)
+    val POWERPOINT_TABLE = NoteTemplate(
+        id = "powerpoint_table",
+        name = "Tabela PowerPoint (2 Colunas)",
+        description = "Modelo idêntico ao PowerPoint: tabela de 2 colunas com cabeçalho terracota e 13 linhas alternadas",
+        title = "Tabela",
+        content = """
+| Coluna 1 | Coluna 2 |
+| :--- | :--- |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |
+| | |
+        """.trimIndent(),
+        color = "#c84b15",
+        tags = listOf("tabela", "powerpoint", "comparativo")
+    )
+
+    val ALL = listOf(BLANK, SURGICAL_TERMINOLOGY, POWERPOINT_TABLE)
 }
 
