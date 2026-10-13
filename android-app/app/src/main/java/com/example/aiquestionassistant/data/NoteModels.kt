@@ -154,7 +154,7 @@ object NoteTemplates {
 | | |
 | | |
         """.trimIndent(),
-        color = "#c84b15",
+        color = "#2e80ea",
         tags = listOf("tabela", "powerpoint", "comparativo")
     )
 

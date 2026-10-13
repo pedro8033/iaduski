@@ -2040,11 +2040,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (colorVal === 'terracotta' || hex.toLowerCase() === '#c84b15') {
         return {
-          background: '#c84b15',
-          border: 'rgba(255, 255, 255, 0.25)',
+          background: '#24140f',
+          border: '#c84b15',
           textColor: '#ffffff',
           subTextColor: '#fde8e5',
-          tagBg: 'rgba(255, 255, 255, 0.2)',
+          tagBg: 'rgba(200, 75, 21, 0.25)',
           isLight: false
         };
       }
@@ -2681,7 +2681,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       titleInp.value = this.activeEditingNote.title || '';
-      contentInp.value = this.activeEditingNote.content || '';
+      
+      // Converte markdown ou texto puro para visual WYSIWYG
+      const formattedHtml = this.convertMarkdownOrRawToHtml(this.activeEditingNote.content || '');
+      contentInp.innerHTML = formattedHtml;
+      this.bindTableActionButtons();
       catSelect.value = this.activeEditingNote.categoryId || '';
 
       const previewDiv = document.getElementById('editor-note-preview');
@@ -2733,20 +2737,34 @@ document.addEventListener('DOMContentLoaded', () => {
       const card = document.querySelector('.note-editor-card');
       if (!card) return;
       const st = this.getColorStyle(colorId);
-      card.style.backgroundColor = st.background;
-      card.style.borderColor = st.border;
-      // Ajusta cor dos inputs e labels dentro do card do editor
+      // Mantém fundo do editor num tema escuro confortável (#18181b) para leitura
+      card.style.backgroundColor = '#18181b';
+      card.style.borderColor = st.border || '#27272a';
+      
+      const headerBar = card.querySelector('.note-editor-header');
+      if (headerBar) {
+        headerBar.style.borderTop = (colorId && colorId !== 'default') ? `3px solid ${st.border}` : 'none';
+      }
+
       const titleInput = card.querySelector('.editor-title-input');
-      const contentTextarea = card.querySelector('.editor-content-textarea');
-      if (titleInput) titleInput.style.color = st.textColor;
-      if (contentTextarea) contentTextarea.style.color = st.subTextColor;
+      const contentEditor = card.querySelector('.editor-content-rich');
+      if (titleInput) titleInput.style.color = '#ffffff';
+      if (contentEditor) contentEditor.style.color = '#e2e8f0';
+    },
+
+    getEditorContent() {
+      const el = document.getElementById('editor-note-content');
+      if (!el) return '';
+      return el.innerHTML;
     },
 
     updateStats() {
-      const text = document.getElementById('editor-note-content')?.value || '';
+      const el = document.getElementById('editor-note-content');
+      const text = el ? (el.innerText || '') : '';
       const chars = text.length;
       const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-      document.getElementById('word-counter-stats').textContent = `${words} palavras • ${chars} carateres`;
+      const statsEl = document.getElementById('word-counter-stats');
+      if (statsEl) statsEl.textContent = `${words} palavras • ${chars} carateres`;
     },
 
     setSaveStatus(msg, statusClass) {
@@ -2759,7 +2777,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async saveCurrentNote() {
       if (!this.activeEditingNote) return;
       const title = document.getElementById('editor-note-title')?.value || '';
-      const content = document.getElementById('editor-note-content')?.value || '';
+      const content = this.getEditorContent();
 
       this.activeEditingNote.title = title;
       this.activeEditingNote.content = content;
@@ -2800,24 +2818,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     formatNotePreview(text) {
       if (!text) return '(Nota vazia)';
-      if (text.includes('| :--- |') || text.includes('|:---|')) {
-        const lines = text.split('\n')
-          .filter(l => l.trim().startsWith('|') && !l.includes('---'))
-          .map(l => {
-            const parts = l.split('|').map(s => s.trim().replace(/\*\*/g, '')).filter(Boolean);
-            return parts.length >= 2 ? `${parts[0]}: ${parts[1]}` : parts[0] || '';
-          })
-          .filter(Boolean);
-        if (lines.length > 1) {
-          const dataRows = lines.slice(1);
-          if (dataRows.length > 0) {
-            return dataRows.slice(0, 4).join(' • ') + (dataRows.length > 4 ? '...' : '');
-          }
-          return `📊 ${lines[0]}`;
-        }
-        return '📊 Tabela de 2 colunas';
+      if (text.includes('ppt-visual-table') || text.includes('| :--- |') || text.includes('|:---|')) {
+        return '📊 Tabela PowerPoint (2 Colunas • 13 Linhas)';
       }
-      return text;
+      const clean = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      return clean || '(Nota vazia)';
     },
 
     openTemplatesModal() {
@@ -2868,11 +2873,18 @@ document.addEventListener('DOMContentLoaded', () => {
       const modal = document.getElementById('modal-note-templates');
       if (modal) modal.style.display = 'none';
 
+      let initialContent = tmpl.content || '';
+      if (tmpl.id === 'powerpoint_table') {
+        initialContent = this.generatePptTableHtml('Coluna 1', 'Coluna 2', 13);
+      } else if (tmpl.id === 'surgical_terminology_table') {
+        initialContent = this.generatePptTableHtml('Segundo elemento', 'Significado', 13);
+      }
+
       const isTerracotta = tmpl.id === 'powerpoint_table' || tmpl.id === 'surgical_terminology_table' || tmpl.color === 'terracotta' || tmpl.color === '#c84b15';
       const newNote = {
         id: 'note_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
         title: tmpl.title || '',
-        content: tmpl.content || '',
+        content: initialContent,
         color: isTerracotta ? 'terracotta' : (tmpl.color || 'blue'),
         categoryId: null,
         tags: [...(tmpl.tags || [])],
@@ -2921,55 +2933,244 @@ document.addEventListener('DOMContentLoaded', () => {
         contentInp.style.display = 'block';
         if (btn) btn.textContent = '👁 Ver';
       } else {
-        const text = contentInp.value || '';
-        previewDiv.innerHTML = renderMarkdown(text);
+        previewDiv.innerHTML = contentInp.innerHTML;
         contentInp.style.display = 'none';
         previewDiv.style.display = 'block';
         if (btn) btn.textContent = '✏ Editar';
       }
     },
 
+    generatePptTableHtml(col1Title = 'Coluna 1', col2Title = 'Coluna 2', numRows = 13, existingRows = []) {
+      let rowsHtml = '';
+      for (let i = 0; i < numRows; i++) {
+        const isEven = i % 2 === 1;
+        const bg = isEven ? '#efcfcc' : '#f7e9e7';
+        const cell1 = existingRows[i] ? existingRows[i][0] || '' : '';
+        const cell2 = existingRows[i] ? existingRows[i][1] || '' : '';
+        rowsHtml += `
+          <tr style="background-color: ${bg} !important;">
+            <td contenteditable="true" style="width: 32% !important; border: 1.5px solid #ffffff !important; padding: 8px 14px !important; color: #1f2937 !important; min-height: 38px !important; font-size: 0.93rem !important; vertical-align: middle !important; outline: none;">${escapeHtml(cell1)}</td>
+            <td contenteditable="true" style="width: 68% !important; border: 1.5px solid #ffffff !important; padding: 8px 14px !important; color: #1f2937 !important; min-height: 38px !important; font-size: 0.93rem !important; vertical-align: middle !important; outline: none;">${escapeHtml(cell2)}</td>
+          </tr>
+        `;
+      }
+
+      return `
+        <div class="ppt-table-wrapper" contenteditable="false" style="margin: 1.25rem 0; width: 100%;">
+          <table class="ppt-visual-table" style="width: 100% !important; border-collapse: collapse !important; border: 1.5px solid #ffffff !important; border-radius: 6px !important; overflow: hidden !important; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35) !important;">
+            <thead>
+              <tr>
+                <th contenteditable="true" style="width: 32% !important; background-color: #d34817 !important; color: #ffffff !important; padding: 10px 14px !important; text-align: left !important; font-weight: 700 !important; border: 1.5px solid #ffffff !important; font-size: 0.98rem !important; outline: none;">${escapeHtml(col1Title)}</th>
+                <th contenteditable="true" style="width: 68% !important; background-color: #d34817 !important; color: #ffffff !important; padding: 10px 14px !important; text-align: left !important; font-weight: 700 !important; border: 1.5px solid #ffffff !important; font-size: 0.98rem !important; outline: none;">${escapeHtml(col2Title)}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          <div class="ppt-table-actions" style="display: flex; gap: 8px; margin-top: 8px;">
+            <button type="button" class="btn-table-action btn-add-table-row">+ Adicionar Linha</button>
+            <button type="button" class="btn-table-action btn-remove-table-row">- Remover Linha</button>
+          </div>
+        </div>
+      `;
+    },
+
+    bindTableActionButtons() {
+      const editor = document.getElementById('editor-note-content');
+      if (!editor) return;
+
+      editor.querySelectorAll('.btn-add-table-row').forEach(btn => {
+        btn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const wrapper = btn.closest('.ppt-table-wrapper');
+          if (!wrapper) return;
+          const tbody = wrapper.querySelector('tbody');
+          if (!tbody) return;
+          const count = tbody.children.length;
+          const isEven = count % 2 === 1;
+          const bg = isEven ? '#efcfcc' : '#f7e9e7';
+          const tr = document.createElement('tr');
+          tr.style.cssText = `background-color: ${bg} !important;`;
+          tr.innerHTML = `
+            <td contenteditable="true" style="width: 32% !important; border: 1.5px solid #ffffff !important; padding: 8px 14px !important; color: #1f2937 !important; min-height: 38px !important; font-size: 0.93rem !important; vertical-align: middle !important; outline: none;"></td>
+            <td contenteditable="true" style="width: 68% !important; border: 1.5px solid #ffffff !important; padding: 8px 14px !important; color: #1f2937 !important; min-height: 38px !important; font-size: 0.93rem !important; vertical-align: middle !important; outline: none;"></td>
+          `;
+          tbody.appendChild(tr);
+          tr.querySelector('td')?.focus();
+          this.updateStats();
+          this.saveCurrentNote();
+        };
+      });
+
+      editor.querySelectorAll('.btn-remove-table-row').forEach(btn => {
+        btn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const wrapper = btn.closest('.ppt-table-wrapper');
+          if (!wrapper) return;
+          const tbody = wrapper.querySelector('tbody');
+          if (!tbody || tbody.children.length <= 1) return;
+          tbody.removeChild(tbody.lastElementChild);
+          this.updateStats();
+          this.saveCurrentNote();
+        };
+      });
+    },
+
+    convertMarkdownOrRawToHtml(text) {
+      if (!text) return '';
+      if (text.includes('ppt-visual-table') || text.includes('<table')) {
+        return text;
+      }
+      let html = text;
+      // Converte tabela markdown caso exista
+      if (html.includes('|') && (html.includes('---') || html.includes('| :--- |') || html.includes('|:---|'))) {
+        html = this.convertMarkdownTableToVisualHtml(html);
+      }
+      // Negrito
+      html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+      // Itálico
+      html = html.replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, '<i>$1</i>');
+      // Destaque
+      html = html.replace(/==(.+?)==/g, '<mark class="note-highlight" style="background:#fef08a;color:#1e293b;padding:2px 5px;border-radius:4px;font-weight:600;">$1</mark>');
+      html = html.replace(/<mark>(.+?)<\/mark>/g, '<mark class="note-highlight" style="background:#fef08a;color:#1e293b;padding:2px 5px;border-radius:4px;font-weight:600;">$1</mark>');
+      // Cores
+      html = html.replace(/<color=(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8})>(.+?)<\/color>/g, '<span style="color:$1;font-weight:bold;">$2</span>');
+      html = html.replace(/\[color:(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8})\](.+?)\[\/color\]/g, '<span style="color:$1;font-weight:bold;">$2</span>');
+      // Imagens
+      html = html.replace(/!\[(.*?)\]\((.*?)\)/g, '<div style="margin:10px 0;"><img src="$2" alt="$1" style="max-width:100%;max-height:360px;border-radius:8px;border:1px solid #334155;display:block;" /><small style="color:#94a3b8;font-style:italic;">$1</small></div>');
+      // Checklists
+      html = html.replace(/^- \[x\] (.*)$/gim, '<div class="note-checklist-item" style="display:flex;align-items:center;gap:8px;margin:4px 0;"><input type="checkbox" checked style="width:16px;height:16px;accent-color:#10a37f;" onchange="this.nextElementSibling.style.textDecoration=this.checked?\'line-through\':\'none\';"><span style="text-decoration:line-through;">$1</span></div>');
+      html = html.replace(/^- \[ \] (.*)$/gim, '<div class="note-checklist-item" style="display:flex;align-items:center;gap:8px;margin:4px 0;"><input type="checkbox" style="width:16px;height:16px;accent-color:#10a37f;" onchange="this.nextElementSibling.style.textDecoration=this.checked?\'line-through\':\'none\';"><span>$1</span></div>');
+      // Quebras de linha
+      if (!html.includes('<div') && !html.includes('<table') && !html.includes('<p>')) {
+        html = html.replace(/\n/g, '<br>');
+      }
+      return html;
+    },
+
+    convertMarkdownTableToVisualHtml(markdownText) {
+      const lines = markdownText.split('\n');
+      const tableLines = [];
+      const before = [];
+      const after = [];
+      let inTable = false;
+      let finishedTable = false;
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+          if (!finishedTable) {
+            inTable = true;
+            tableLines.push(trimmed);
+            continue;
+          }
+        } else if (inTable) {
+          finishedTable = true;
+        }
+
+        if (!inTable) before.push(line);
+        else after.push(line);
+      }
+
+      if (tableLines.length === 0) return markdownText;
+
+      const headerParts = tableLines[0].split('|').map(s => s.trim().replace(/\*\*/g, '')).filter(Boolean);
+      const col1 = headerParts[0] || 'Coluna 1';
+      const col2 = headerParts[1] || 'Coluna 2';
+
+      const dataRows = [];
+      for (let i = 1; i < tableLines.length; i++) {
+        const l = tableLines[i];
+        if (l.includes('---')) continue;
+        const rawParts = l.split('|');
+        const parts = rawParts.slice(1, rawParts.length - 1).map(s => s.trim());
+        dataRows.push([parts[0] || '', parts[1] || '']);
+      }
+
+      const totalRows = Math.max(13, dataRows.length);
+      const tableHtml = this.generatePptTableHtml(col1, col2, totalRows, dataRows);
+
+      let res = '';
+      if (before.length > 0) res += before.join('<br>') + '<br>';
+      res += tableHtml;
+      if (after.length > 0) res += '<br>' + after.join('<br>');
+      return res;
+    },
+
     applyFormat(cmd) {
       if (!cmd) return;
-      const textarea = document.getElementById('editor-note-content');
-      if (!textarea) return;
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const text = textarea.value;
-      const sel = text.substring(start, end);
-
-      let before = text.substring(0, start);
-      let after = text.substring(end);
-      let insertion = '';
+      const editor = document.getElementById('editor-note-content');
+      if (!editor) return;
+      editor.focus();
 
       switch (cmd) {
-        case 'bold': insertion = `**${sel || 'texto em negrito'}**`; break;
-        case 'italic': insertion = `*${sel || 'texto em itálico'}*`; break;
-        case 'highlight': insertion = `==${sel || 'texto destacado'}==`; break;
+        case 'bold': {
+          document.execCommand('bold', false, null);
+          break;
+        }
+        case 'italic': {
+          document.execCommand('italic', false, null);
+          break;
+        }
+        case 'highlight': {
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+            const range = sel.getRangeAt(0);
+            let parent = range.commonAncestorContainer;
+            if (parent.nodeType === Node.TEXT_NODE) parent = parent.parentNode;
+            if (parent && parent.closest && parent.closest('mark.note-highlight')) {
+              const mark = parent.closest('mark.note-highlight');
+              const textNode = document.createTextNode(mark.textContent);
+              mark.parentNode.replaceChild(textNode, mark);
+            } else {
+              const mark = document.createElement('mark');
+              mark.className = 'note-highlight';
+              mark.style.cssText = 'background: #fef08a !important; color: #1e293b !important; padding: 2px 5px !important; border-radius: 4px !important; font-weight: 600 !important; display: inline !important;';
+              mark.appendChild(range.extractContents());
+              range.insertNode(mark);
+            }
+          } else {
+            document.execCommand('insertHTML', false, '<mark class="note-highlight" style="background:#fef08a;color:#1e293b;padding:2px 5px;border-radius:4px;font-weight:600;">texto destacado</mark>');
+          }
+          break;
+        }
         case 'color': {
           const colorPicker = document.getElementById('note-text-color-picker');
           if (colorPicker) {
             colorPicker.oninput = (e) => {
               const chosen = e.target.value;
-              const cur = textarea.value;
-              const b = cur.substring(0, start);
-              const a = cur.substring(end);
-              textarea.value = `${b}<color=${chosen}>${sel || 'texto colorido'}</color>${a}`;
-              textarea.focus();
+              editor.focus();
+              const sel = window.getSelection();
+              if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+                document.execCommand('foreColor', false, chosen);
+              } else {
+                document.execCommand('insertHTML', false, `<span style="color:${chosen};font-weight:bold;">texto colorido</span>`);
+              }
               this.updateStats();
               this.saveCurrentNote();
             };
             colorPicker.click();
             return;
           }
-          insertion = `<color=#ef4444>${sel || 'texto colorido'}</color>`;
           break;
         }
-        case 'fontsize': insertion = `\n# ${sel || 'Título Grande'}\n`; break;
-        case 'heading': insertion = `\n## ${sel || 'Título'}\n`; break;
-        case 'bullet': insertion = `\n- ${sel || 'Item da lista'}`; break;
-        case 'checklist': insertion = `\n- [ ] ${sel || 'Nova tarefa'}`; break;
-        case 'code': insertion = `\n\`\`\`\n${sel || '// código aqui'}\n\`\`\`\n`; break;
+        case 'fontsize':
+        case 'heading': {
+          document.execCommand('formatBlock', false, '<h2>');
+          break;
+        }
+        case 'bullet': {
+          document.execCommand('insertUnorderedList', false, null);
+          break;
+        }
+        case 'checklist': {
+          const checklistHtml = `<div class="note-checklist-item" style="display:flex;align-items:center;gap:8px;margin:5px 0;"><input type="checkbox" style="width:16px;height:16px;accent-color:#10a37f;cursor:pointer;" onchange="this.nextElementSibling.style.textDecoration=this.checked?'line-through':'none';"><span contenteditable="true" style="outline:none;">Nova tarefa</span></div><p><br></p>`;
+          document.execCommand('insertHTML', false, checklistHtml);
+          break;
+        }
         case 'camera': {
           const fileInp = document.getElementById('note-camera-input');
           if (fileInp) {
@@ -2995,12 +3196,12 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
         case 'template-table': {
-          const tmpl = this.TEMPLATES.find(t => t.id === 'powerpoint_table') || this.TEMPLATES.find(t => t.id === 'surgical_terminology_table');
-          const tableContent = tmpl ? tmpl.content : '';
-          insertion = (text.trim().length > 0 ? '\n\n' : '') + tableContent;
+          const tableHtml = this.generatePptTableHtml('Coluna 1', 'Coluna 2', 13);
+          document.execCommand('insertHTML', false, tableHtml);
+          this.bindTableActionButtons();
           const titleInp = document.getElementById('editor-note-title');
           if (titleInp && !titleInp.value) {
-            titleInp.value = tmpl ? tmpl.title : 'Tabela';
+            titleInp.value = 'Tabela';
             if (this.activeEditingNote) this.activeEditingNote.title = titleInp.value;
           }
           if (this.activeEditingNote) {
@@ -3011,8 +3212,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      textarea.value = before + insertion + after;
-      textarea.focus();
       this.updateStats();
       this.saveCurrentNote();
     },
@@ -3022,16 +3221,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const dataUrl = e.target.result;
-        const textarea = document.getElementById('editor-note-content');
-        if (!textarea) return;
-        const start = textarea.selectionStart || textarea.value.length;
-        const end = textarea.selectionEnd || textarea.value.length;
-        const cur = textarea.value;
-        const before = cur.substring(0, start);
-        const after = cur.substring(end);
-        const insert = `\n\n![${defaultAlt}](${dataUrl})\n\n`;
-        textarea.value = before + insert + after;
-        textarea.focus();
+        const editor = document.getElementById('editor-note-content');
+        if (!editor) return;
+        editor.focus();
+        const imgHtml = `<div style="margin:10px 0;"><img src="${dataUrl}" alt="${defaultAlt}" style="max-width:100%;max-height:360px;border-radius:8px;border:1px solid #334155;display:block;" /><small style="color:#94a3b8;font-style:italic;">${escapeHtml(defaultAlt)}</small></div><p><br></p>`;
+        document.execCommand('insertHTML', false, imgHtml);
         this.updateStats();
         this.saveCurrentNote();
         showToast('Foto inserida na nota!');
@@ -3052,7 +3246,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const newNote = {
             id: 'note_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
             title: topic,
-            content: data.result,
+            content: this.convertMarkdownOrRawToHtml(data.result),
             color: 'blue',
             categoryId: null,
             tags: [],
@@ -3080,11 +3274,9 @@ document.addEventListener('DOMContentLoaded', () => {
     },
 
     async executeNoteAiAction(action) {
-      const textarea = document.getElementById('editor-note-content');
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const selected = textarea.value.substring(start, end);
-      const content = selected || textarea.value;
+      const editor = document.getElementById('editor-note-content');
+      const sel = window.getSelection()?.toString() || '';
+      const content = sel || (editor ? editor.innerText : '');
 
       showToast('Assistente de IA a processar...');
       try {
@@ -3094,13 +3286,13 @@ document.addEventListener('DOMContentLoaded', () => {
           body: JSON.stringify({
             action,
             content,
-            selection: selected || undefined,
+            selection: sel || undefined,
             topic: document.getElementById('editor-note-title')?.value || undefined
           })
         });
         const data = await res.json();
         if (data.success && data.result) {
-          this.showAiPreview(action, data.result, selected ? { start, end } : null);
+          this.showAiPreview(action, data.result, sel ? true : false);
         } else {
           showToast('Falha no processamento da IA');
         }
@@ -3109,7 +3301,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     },
 
-    showAiPreview(action, resultText, range) {
+    showAiPreview(action, resultText, hasSelection) {
       const modal = document.getElementById('modal-ai-preview');
       const titleEl = document.getElementById('ai-preview-action-title');
       const contentEl = document.getElementById('ai-preview-content');
@@ -3120,16 +3312,16 @@ document.addEventListener('DOMContentLoaded', () => {
       contentEl.textContent = resultText;
       modal.style.display = 'flex';
 
+      const formattedResult = this.convertMarkdownOrRawToHtml(resultText);
+
       // Substituir
       replaceBtn.onclick = () => {
-        const textarea = document.getElementById('editor-note-content');
+        const editor = document.getElementById('editor-note-content');
         if (action === 'suggest_title') {
           document.getElementById('editor-note-title').value = resultText.replace(/^["#]+|["#]+$/g, '').trim();
-        } else if (range) {
-          const full = textarea.value;
-          textarea.value = full.substring(0, range.start) + resultText + full.substring(range.end);
         } else {
-          textarea.value = resultText;
+          if (editor) editor.innerHTML = formattedResult;
+          this.bindTableActionButtons();
         }
         modal.style.display = 'none';
         this.updateStats();
@@ -3139,8 +3331,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Inserir no final
       insertBtn.onclick = () => {
-        const textarea = document.getElementById('editor-note-content');
-        textarea.value = textarea.value.trim() ? `${textarea.value}\n\n${resultText}` : resultText;
+        const editor = document.getElementById('editor-note-content');
+        if (editor) {
+          editor.innerHTML = (editor.innerHTML.trim() ? `${editor.innerHTML}<br><br>${formattedResult}` : formattedResult);
+          this.bindTableActionButtons();
+        }
         modal.style.display = 'none';
         this.updateStats();
         this.saveCurrentNote();

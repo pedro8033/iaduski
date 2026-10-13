@@ -1680,6 +1680,66 @@ body.chatgpt-body {
   font-family: inherit;
 }
 
+.editor-content-rich {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #e2e8f0;
+  font-size: 0.98rem;
+  line-height: 1.6;
+  overflow-y: auto;
+  font-family: inherit;
+  padding: 0.5rem 0.25rem;
+  min-height: 250px;
+  word-break: break-word;
+}
+
+.editor-content-rich:empty::before {
+  content: attr(data-placeholder);
+  color: #71717a;
+  pointer-events: none;
+  display: block;
+}
+
+.editor-content-rich mark.note-highlight,
+mark.note-highlight {
+  background-color: #fef08a !important;
+  color: #1e293b !important;
+  padding: 2px 5px !important;
+  border-radius: 4px !important;
+  font-weight: 600 !important;
+  display: inline !important;
+}
+
+.editor-content-rich h1, .editor-content-rich h2, .editor-content-rich h3 {
+  color: #38bdf8;
+  margin: 0.6rem 0 0.3rem 0;
+}
+
+.editor-content-rich ul, .editor-content-rich ol {
+  padding-left: 1.5rem;
+  margin: 0.4rem 0;
+}
+
+.editor-content-rich li {
+  margin: 0.2rem 0;
+}
+
+.note-checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.note-checklist-item input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  accent-color: #10a37f;
+  cursor: pointer;
+}
+
 /* Popups e Paletas */
 .color-palette-popup {
   position: absolute;
@@ -2912,59 +2972,124 @@ body.chatgpt-body {
 }
 
 /* Tabela Modelo PowerPoint (2 Colunas, Cabeçalho Terracota e Linhas Alternadas Pastel) */
-.markdown-content table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 0.85rem 0;
-  border-radius: 6px;
-  overflow: hidden;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
-  empty-cells: show;
+.markdown-content table,
+.editor-content-rich table,
+.ppt-visual-table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  margin: 0.85rem 0 !important;
+  border-radius: 6px !important;
+  overflow: hidden !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35) !important;
+  empty-cells: show !important;
   border: 1.5px solid #ffffff !important;
 }
 
-.markdown-content table th {
-  background-color: #c84b15 !important;
+.markdown-content table th,
+.editor-content-rich table th,
+.ppt-visual-table th {
+  background-color: #d34817 !important;
   color: #ffffff !important;
-  font-weight: 700;
-  font-size: 0.98rem;
-  padding: 0.75rem 1.15rem;
-  text-align: left;
-  border: 1px solid #ffffff !important;
-  letter-spacing: 0.01em;
-  height: 42px;
+  font-weight: 700 !important;
+  font-size: 0.98rem !important;
+  padding: 0.75rem 1.15rem !important;
+  text-align: left !important;
+  border: 1.5px solid #ffffff !important;
+  letter-spacing: 0.01em !important;
+  height: 42px !important;
+  outline: none !important;
 }
 
 .markdown-content table th:first-child,
-.markdown-content table td:first-child {
-  width: 33%;
+.markdown-content table td:first-child,
+.editor-content-rich table th:first-child,
+.editor-content-rich table td:first-child,
+.ppt-visual-table th:first-child,
+.ppt-visual-table td:first-child {
+  width: 32% !important;
 }
 
 .markdown-content table th:nth-child(2),
-.markdown-content table td:nth-child(2) {
-  width: 67%;
+.markdown-content table td:nth-child(2),
+.editor-content-rich table th:nth-child(2),
+.editor-content-rich table td:nth-child(2),
+.ppt-visual-table th:nth-child(2),
+.ppt-visual-table td:nth-child(2) {
+  width: 68% !important;
 }
 
-.markdown-content table td {
-  background-color: #f1d4cf !important;
+.markdown-content table td,
+.editor-content-rich table td,
+.ppt-visual-table td {
+  background-color: #f7e9e7 !important;
   color: #1f2937 !important;
-  font-size: 0.92rem;
-  padding: 0.65rem 1.15rem;
-  border: 1px solid #ffffff !important;
-  vertical-align: middle;
-  height: 38px;
-  min-height: 38px;
-  line-height: 1.45;
+  font-size: 0.93rem !important;
+  padding: 0.65rem 1.15rem !important;
+  border: 1.5px solid #ffffff !important;
+  vertical-align: middle !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  line-height: 1.45 !important;
+  outline: none !important;
 }
 
-.markdown-content table tr:nth-child(even) td {
-  background-color: #fbf5f4 !important;
+.markdown-content table tr:nth-child(even) td,
+.editor-content-rich table tr:nth-child(even) td,
+.ppt-visual-table tr:nth-child(even) td {
+  background-color: #efcfcc !important;
 }
 
 .markdown-content table td strong,
-.markdown-content table td b {
+.markdown-content table td b,
+.editor-content-rich table td strong,
+.editor-content-rich table td b,
+.ppt-visual-table td strong,
+.ppt-visual-table td b {
   color: #991b1b !important;
-  font-weight: 700;
+  font-weight: 700 !important;
+}
+
+.ppt-table-wrapper {
+  margin: 1.25rem 0;
+  width: 100%;
+}
+
+.ppt-table-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.btn-table-action {
+  padding: 0.4rem 0.85rem;
+  border-radius: 7px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-add-table-row {
+  background: rgba(211, 72, 23, 0.18) !important;
+  border: 1px solid rgba(211, 72, 23, 0.4) !important;
+  color: #fb923c !important;
+}
+
+.btn-add-table-row:hover {
+  background: rgba(211, 72, 23, 0.3) !important;
+  color: #ffedd5 !important;
+}
+
+.btn-remove-table-row {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: #d4d4d8 !important;
+}
+
+.btn-remove-table-row:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
 }
 
 /* ==========================================================================

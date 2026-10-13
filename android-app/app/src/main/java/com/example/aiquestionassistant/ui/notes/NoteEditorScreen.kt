@@ -1855,24 +1855,30 @@ fun RenderMarkdownTable(lines: List<String>) {
     if (lines.isEmpty()) return
     val headerCells = lines[0].split("|").map { it.trim() }.filter { it.isNotEmpty() }
     val dataRows = lines.drop(1).filter { line ->
-        val clean = line.replace("|", "").replace("-", "").replace(":", "").trim()
-        clean.isNotEmpty()
+        !line.contains("---")
     }.map { line ->
-        line.split("|").map { it.trim() }.filter { it.isNotEmpty() }
+        val rawParts = line.split("|")
+        val parts = if (rawParts.size > 2 && line.startsWith("|") && line.endsWith("|")) {
+            rawParts.subList(1, rawParts.size - 1)
+        } else {
+            rawParts
+        }
+        parts.map { it.trim() }
     }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF7D7D2))
+        shape = RoundedCornerShape(6.dp),
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.White),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF7E9E7))
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFFC84B15))
+                    .background(Color(0xFFD34817))
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1882,33 +1888,43 @@ fun RenderMarkdownTable(lines: List<String>) {
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,
-                        modifier = Modifier.weight(if (idx == 0) 1f else 1.8f)
+                        modifier = Modifier.weight(if (idx == 0) 1f else 2.125f)
                     )
                 }
             }
 
             dataRows.forEachIndexed { rowIdx, rowCells ->
+                val bg = if (rowIdx % 2 == 0) Color(0xFFF7E9E7) else Color(0xFFEFCFCC)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(if (rowIdx % 2 == 0) Color(0xFFF7D7D2) else Color(0xFFFDE8E5))
-                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                        .background(bg)
+                        .heightIn(min = 38.dp)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    rowCells.forEachIndexed { idx, cellText ->
-                        val cleanCell = cellText.removePrefix("**").removeSuffix("**").trim()
-                        Text(
-                            text = cleanCell,
-                            color = if (idx == 0) Color(0xFF991B1B) else Color(0xFF1F2937),
-                            fontWeight = if (idx == 0) FontWeight.Bold else FontWeight.Normal,
-                            fontSize = 14.sp,
-                            modifier = Modifier.weight(if (idx == 0) 1f else 1.8f)
-                        )
-                    }
+                    val cell0 = rowCells.getOrNull(0) ?: ""
+                    val cell1 = rowCells.getOrNull(1) ?: ""
+
+                    val cleanCell0 = cell0.removePrefix("**").removeSuffix("**").trim()
+                    Text(
+                        text = cleanCell0,
+                        color = if (cleanCell0.isNotEmpty()) Color(0xFF991B1B) else Color(0xFF1F2937),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    val cleanCell1 = cell1.removePrefix("**").removeSuffix("**").trim()
+                    Text(
+                        text = cleanCell1,
+                        color = Color(0xFF1F2937),
+                        fontWeight = FontWeight.Normal,
+                        fontSize = 14.sp,
+                        modifier = Modifier.weight(2.125f)
+                    )
                 }
-                if (rowIdx < dataRows.size - 1) {
-                    HorizontalDivider(color = Color(0xFFE8B4AC), thickness = 0.8.dp)
-                }
+                HorizontalDivider(color = Color.White, thickness = 1.5.dp)
             }
         }
     }
