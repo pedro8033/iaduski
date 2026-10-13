@@ -300,13 +300,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateSettingsUI() {
-    // 1. Atualizar rótulo no rodapé do perfil
+    // 1. Atualizar rótulo no rodapé do perfil e marca superior
     let engineLabel = 'Google Gemini';
-    if (state.activeProvider === 'agentrouter') engineLabel = 'AgentRouter';
-    else if (state.activeProvider === 'openrouter') engineLabel = 'OpenRouter';
-    else if (state.activeProvider === 'typesafe') engineLabel = 'TypeSafe JEV';
-    else if (state.activeProvider === 'mock') engineLabel = 'Offline Local';
+    if (state.activeProvider === 'agentrouter') {
+      const activeModelName = state.agentrouterSettings.model || 'claude-opus-4-8';
+      engineLabel = `AgentRouter (${activeModelName})`;
+    } else if (state.activeProvider === 'openrouter') {
+      engineLabel = 'OpenRouter';
+    } else if (state.activeProvider === 'typesafe') {
+      engineLabel = 'TypeSafe JEV';
+    } else if (state.activeProvider === 'mock') {
+      engineLabel = 'Offline Local';
+    }
     if (dom.currentEngineLabel) dom.currentEngineLabel.textContent = engineLabel;
+    const brandDropdownText = document.querySelector('.sidebar-brand-dropdown .brand-text');
+    if (brandDropdownText) {
+      brandDropdownText.textContent = state.activeProvider === 'agentrouter' ? 'ChatGPT (AgentRouter)' : 'ChatGPT';
+    }
 
     // 2. Cartões de Seleção de Fornecedor Ativo no Modal
     dom.providerSelectCards.forEach((card) => {
@@ -334,6 +344,12 @@ document.addEventListener('DOMContentLoaded', () => {
         dom.badgeStatusAgentRouter.className = 'connection-status-pill';
         dom.badgeStatusAgentRouter.querySelector('.status-text').textContent = 'Chave ausente';
       }
+    }
+    if (dom.inputAgentRouterBaseUrl && state.agentrouterSettings.baseUrl) {
+      dom.inputAgentRouterBaseUrl.value = state.agentrouterSettings.baseUrl;
+    }
+    if (dom.inputAgentRouterKey && state.agentrouterSettings.hasKey) {
+      dom.inputAgentRouterKey.placeholder = `Chave configurada: ${state.agentrouterSettings.maskedKey}`;
     }
 
     // 5. Status OpenRouter
@@ -366,6 +382,18 @@ document.addEventListener('DOMContentLoaded', () => {
         state.activeProvider = newProv;
         updateSettingsUI();
         showToast(`Fornecedor alterado para ${newProv.toUpperCase()}`);
+
+        const boxEl = document.getElementById(`box-${newProv}-config`);
+        if (boxEl) {
+          boxEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          boxEl.style.transition = 'box-shadow 0.3s, border-color 0.3s';
+          boxEl.style.borderColor = '#38bdf8';
+          boxEl.style.boxShadow = '0 0 16px rgba(56, 189, 248, 0.35)';
+          setTimeout(() => {
+            boxEl.style.borderColor = '';
+            boxEl.style.boxShadow = '';
+          }, 1500);
+        }
       }
     } catch {
       showToast('Erro ao atualizar fornecedor.');
@@ -533,15 +561,6 @@ document.addEventListener('DOMContentLoaded', () => {
         model.capabilities.image ? 'Visão' : '',
       ].filter(Boolean).join(', ');
       dom.agentRouterModelDesc.textContent = `${model.name} • ${model.description || ''} • Capacidades: ${caps} • ${priceText}`;
-    }
-  }
-        feedbackEl.textContent = 'Chave removida.';
-        feedbackEl.className = 'action-feedback-msg';
-        showToast(`Chave de ${providerName} removida.`);
-        await loadSettings();
-      }
-    } catch (err) {
-      showToast(`Erro ao remover chave: ${err.message}`);
     }
   }
 
@@ -1088,6 +1107,8 @@ document.addEventListener('DOMContentLoaded', () => {
               content: userText || undefined,
               prompt: userText || undefined,
               image: attachedImg || undefined,
+              provider: state.activeProvider,
+              model: state.activeProvider === 'agentrouter' ? state.agentrouterSettings.model : undefined,
             }),
           });
 
@@ -1161,7 +1182,7 @@ document.addEventListener('DOMContentLoaded', () => {
               imageUrl: streamMeta?.imageUrl,
               keyPoints: streamMeta?.keyPoints,
               latencyMs: streamMeta?.latencyMs,
-              provider: streamMeta?.provider || 'gemini',
+              provider: streamMeta?.provider || state.activeProvider,
             };
             streamedSuccessfully = true;
           }
@@ -1178,6 +1199,8 @@ document.addEventListener('DOMContentLoaded', () => {
               content: userText || undefined,
               prompt: userText || undefined,
               image: attachedImg || undefined,
+              provider: state.activeProvider,
+              model: state.activeProvider === 'agentrouter' ? state.agentrouterSettings.model : undefined,
             }),
           });
           resultData = await res.json();
@@ -1586,7 +1609,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/assistant/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'ask', prompt: userText }),
+        body: JSON.stringify({
+          action: 'ask',
+          prompt: userText,
+          provider: state.activeProvider,
+          model: state.activeProvider === 'agentrouter' ? state.agentrouterSettings.model : undefined,
+        }),
       });
       const data = await res.json();
       const replyText = data.resultText || data.answer || 'Não compreendi, pode repetir?';
@@ -2910,6 +2938,9 @@ document.addEventListener('DOMContentLoaded', () => {
      INICIALIZAÇÃO DO CHAT
      ========================================================================== */
   loadSettings();
+  loadAgentRouterModels();
+  loadGeminiModels();
+  loadOpenRouterModels();
   loadConversations();
   if (state.conversations.length === 0) {
     createNewConversation();

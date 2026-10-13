@@ -455,6 +455,27 @@ export default function App() {
 
               <button
                 type="button"
+                className={`provider-card-btn ${activeProvider.includes('agentrouter') ? 'active' : ''}`}
+                onClick={() => switchProvider('agentrouter')}
+                disabled={switchingProvider}
+              >
+                <div className="p-header">
+                  <div className="p-title-with-icon">
+                    <BrainIcon />
+                    <span className="p-title">AgentRouter</span>
+                  </div>
+                  {activeProvider.includes('agentrouter') && (
+                    <span className="p-check">
+                      <CheckIcon />
+                      <span>Ativo</span>
+                    </span>
+                  )}
+                </div>
+                <span className="p-desc">Claude Opus 4.8 / 5 • DeepSeek V4 Flash • GPT-6 Astra • agentrouter.org</span>
+              </button>
+
+              <button
+                type="button"
                 className={`provider-card-btn ${activeProvider.includes('gemini') ? 'active' : ''}`}
                 onClick={() => switchProvider('gemini')}
                 disabled={switchingProvider}

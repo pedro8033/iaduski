@@ -7,6 +7,8 @@ const assistantActionSchema = z.object({
   content: z.string().max(50000).optional(),
   image: z.string().optional(),
   prompt: z.string().max(10000).optional(),
+  model: z.string().max(100).optional(),
+  provider: z.string().max(50).optional(),
   options: z
     .object({
       detailLevel: z.enum(['short', 'detailed', 'bullet_points', 'simple']).optional(),

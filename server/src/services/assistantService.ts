@@ -38,7 +38,27 @@ export class AssistantService {
 
   async executeAction(req: AssistantRequest): Promise<AssistantResponse> {
     const startTime = Date.now();
-    const provider = this.getProvider();
+    let provider = this.getProvider();
+
+    // Se o pedido solicitar explicitamente um provedor ou modelo
+    const isExplicitAgentRouter =
+      req.provider === 'agentrouter' ||
+      (req.model && (req.model.includes('claude-opus') || req.model.includes('deepseek-v4') || req.model.includes('gpt-6')));
+
+    const isExplicitOpenRouter =
+      req.provider === 'openrouter' ||
+      (req.model && (req.model.includes('/') || req.model.includes('deepseek-r1')));
+
+    if (isExplicitAgentRouter) {
+      const key = (process.env.AGENTROUTER_API_KEY || '').trim();
+      const baseUrl = process.env.AGENTROUTER_BASE_URL || 'https://agentrouter.org/v1';
+      const rawModel = req.model || process.env.AGENTROUTER_MODEL || 'claude-opus-4-8';
+      provider = new AgentRouterProvider(key, rawModel, baseUrl, Number(process.env.AI_TIMEOUT_MS ?? 30_000));
+    } else if (isExplicitOpenRouter) {
+      const key = (process.env.OPENROUTER_API_KEY || '').trim();
+      const model = req.model || process.env.OPENROUTER_MODEL || 'deepseek/deepseek-r1:free';
+      provider = new OpenRouterProvider(key, model, Number(process.env.AI_TIMEOUT_MS ?? 25_000));
+    }
 
     // Se o usuário pediu explicitamente para gerar uma imagem (ação 'image' ou intenção textual)
     const fullText = `${req.prompt || ''} ${req.content || ''}`.trim();

@@ -143,6 +143,34 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
         }
     }
 
+    fun enableMediaProjectionForeground() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun disableMediaProjectionForeground() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent != null) {
             val sharedText = intent.getStringExtra("shared_text")
@@ -574,15 +602,18 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
 
             val contextText = TextView(context).apply {
                 textSize = 12f
-                setTextColor(Color.parseColor("#94A3B8"))
 
                 if (!currentCapturedImageBase64.isNullOrBlank()) {
-                    text = "Imagem capturada pronta para análise"
+                    text = "📸 Imagem capturada (Pronta para resolver)"
+                    setTextColor(Color.parseColor("#38BDF8"))
+                    typeface = Typeface.DEFAULT_BOLD
                 } else if (!currentCapturedText.isNullOrBlank()) {
                     val snippet = currentCapturedText!!.take(35).replace("\n", " ")
                     text = "Texto: \"$snippet...\""
+                    setTextColor(Color.parseColor("#94A3B8"))
                 } else {
                     text = "Capturar ou colar texto de apoio"
+                    setTextColor(Color.parseColor("#94A3B8"))
                 }
             }
             addView(contextText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
@@ -714,6 +745,8 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
                         val text = text?.toString()?.trim() ?: ""
                         if (text.isNotBlank()) {
                             triggerAssistantAction(AssistantActionType.ASK)
+                        } else if (!currentCapturedImageBase64.isNullOrBlank()) {
+                            triggerAssistantAction(AssistantActionType.SOLVE)
                         }
                         true
                     } else false
@@ -752,6 +785,8 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
                     val text = promptEditText?.text?.toString()?.trim() ?: ""
                     if (text.isNotBlank()) {
                         triggerAssistantAction(AssistantActionType.ASK)
+                    } else if (!currentCapturedImageBase64.isNullOrBlank()) {
+                        triggerAssistantAction(AssistantActionType.SOLVE)
                     } else {
                         Toast.makeText(context, "Digite uma pergunta para enviar", Toast.LENGTH_SHORT).show()
                     }
@@ -787,13 +822,13 @@ class FloatingBubbleService : Service(), TextToSpeech.OnInitListener {
         }
 
         val actions = listOf(
-            AssistantActionType.SUMMARIZE to "#06B6D4",
+            AssistantActionType.SOLVE to "#6366F1",
             AssistantActionType.EXPLAIN to "#3B82F6",
+            AssistantActionType.SUMMARIZE to "#06B6D4",
             AssistantActionType.DIAGRAM to "#8B5CF6",
-            AssistantActionType.IMAGE to "#EC4899",
             AssistantActionType.TRANSLATE to "#10B981",
             AssistantActionType.FLASHCARDS to "#F59E0B",
-            AssistantActionType.SOLVE to "#6366F1"
+            AssistantActionType.IMAGE to "#EC4899"
         )
 
         for ((action, hexColor) in actions) {

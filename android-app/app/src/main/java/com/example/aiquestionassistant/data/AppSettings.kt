@@ -43,6 +43,8 @@ data class AppSettings(
             val rawModel = prefs.getString(KEY_MODEL, "gemini-3.5-flash-lite") ?: "gemini-3.5-flash-lite"
             val sanitizedModel = if (rawModel.contains("1.5") || rawModel.contains("2.0") || rawModel.contains("2.5") || rawModel.contains("3-pro-image")) {
                 "gemini-3.5-flash-lite"
+            } else if (rawModel.equals("laude-opus-4-8", ignoreCase = true)) {
+                "claude-opus-4-8"
             } else rawModel
             return AppSettings(
                 serverUrl = prefs.getString(KEY_SERVER_URL, "http://10.0.2.2:3001") ?: "http://10.0.2.2:3001",

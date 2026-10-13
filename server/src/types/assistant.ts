@@ -22,6 +22,8 @@ export interface AssistantRequest {
   content?: string;
   image?: string;
   prompt?: string;
+  model?: string;
+  provider?: string;
   options?: AssistantRequestOptions;
 }
 

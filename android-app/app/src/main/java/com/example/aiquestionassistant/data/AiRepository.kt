@@ -52,25 +52,38 @@ class AiRepository {
                 return@withContext generateImage(settings, cleanPrompt, options.imageStyle)
             }
 
-            // Se tiver Chave direta do Gemini configurada, executa no dispositivo
-            if (settings.directGeminiKey.isNotBlank()) {
+            val isAgentRouterModel = settings.model.contains("claude-opus") ||
+                    settings.model.contains("deepseek-v4") ||
+                    settings.model.contains("gpt-6")
+            val isOpenRouterModel = settings.model.contains("deepseek-r1") || settings.model.contains("/")
+
+            // 1. Prioriza a chave direta correspondente ao modelo selecionado
+            if (isAgentRouterModel && settings.directAgentRouterKey.isNotBlank()) {
+                val direct = executeDirectAgentRouter(settings, action, content, imageBase64, prompt, options)
+                if (direct.isSuccess) return@withContext direct
+            } else if (isOpenRouterModel && settings.directOpenRouterKey.isNotBlank()) {
+                val direct = executeDirectOpenRouter(settings, action, content, imageBase64, prompt, options)
+                if (direct.isSuccess) return@withContext direct
+            } else if (!isAgentRouterModel && !isOpenRouterModel && settings.directGeminiKey.isNotBlank()) {
                 val direct = executeDirectGemini(settings, action, content, imageBase64, prompt, options)
                 if (direct.isSuccess) return@withContext direct
             }
 
-            // Se tiver Chave direta do AgentRouter configurada, executa no dispositivo
-            if (settings.directAgentRouterKey.isNotBlank()) {
+            // 2. Se a chave correspondente não estiver preenchida, tenta as outras chaves diretas configuradas
+            if (settings.directAgentRouterKey.isNotBlank() && isAgentRouterModel) {
                 val direct = executeDirectAgentRouter(settings, action, content, imageBase64, prompt, options)
                 if (direct.isSuccess) return@withContext direct
             }
-
-            // Se tiver Chave direta do OpenRouter configurada, executa no dispositivo
-            if (settings.directOpenRouterKey.isNotBlank()) {
+            if (settings.directGeminiKey.isNotBlank() && !isAgentRouterModel && !isOpenRouterModel) {
+                val direct = executeDirectGemini(settings, action, content, imageBase64, prompt, options)
+                if (direct.isSuccess) return@withContext direct
+            }
+            if (settings.directOpenRouterKey.isNotBlank() && !isAgentRouterModel) {
                 val direct = executeDirectOpenRouter(settings, action, content, imageBase64, prompt, options)
                 if (direct.isSuccess) return@withContext direct
             }
 
-            // Tenta servidor backend
+            // 3. Tenta servidor backend (que recebe o modelo e provedor ativo)
             val serverResult = executeViaBackend(settings, action, content, imageBase64, prompt, options)
             if (serverResult.isSuccess) return@withContext serverResult
 
@@ -153,6 +166,14 @@ class AiRepository {
             if (!imageBase64.isNullOrBlank()) {
                 val formatted = if (imageBase64.startsWith("data:")) imageBase64 else "data:image/jpeg;base64,$imageBase64"
                 put("image", formatted)
+            }
+            if (settings.model.isNotBlank()) {
+                put("model", settings.model)
+                if (settings.model.contains("claude-opus") || settings.model.contains("deepseek-v4") || settings.model.contains("gpt-6")) {
+                    put("provider", "agentrouter")
+                } else if (settings.model.contains("deepseek-r1") || settings.model.contains("/")) {
+                    put("provider", "openrouter")
+                }
             }
             val optJson = JSONObject().apply {
                 put("detailLevel", options.detailLevel)

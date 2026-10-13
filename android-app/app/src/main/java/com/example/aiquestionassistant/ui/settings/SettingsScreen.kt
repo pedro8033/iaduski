@@ -96,6 +96,7 @@ fun SettingsScreen(
     var isServiceRunning by remember { mutableStateOf(FloatingBubbleService.isRunning) }
 
     var showGeminiKey by remember { mutableStateOf(false) }
+    var showAgentRouterKey by remember { mutableStateOf(false) }
     var showOpenRouterKey by remember { mutableStateOf(false) }
 
     // TextToSpeech para testar a voz
@@ -122,6 +123,41 @@ fun SettingsScreen(
             icon = Icons.Default.AutoAwesome
         ),
         ModelOption(
+            id = "claude-opus-4-8",
+            name = "Claude Opus 4.8",
+            subtitle = "Raciocínio extremo, exames e síntese profunda via AgentRouter",
+            badge = "AgentRouter",
+            icon = Icons.Default.Psychology
+        ),
+        ModelOption(
+            id = "claude-opus-5",
+            name = "Claude Opus 5",
+            subtitle = "Nova geração Anthropic de máxima precisão lógica via AgentRouter",
+            badge = "AgentRouter",
+            icon = Icons.Default.AutoAwesome
+        ),
+        ModelOption(
+            id = "deepseek-v4-flash",
+            name = "DeepSeek V4 Flash",
+            subtitle = "Ultrarrápido, menor latência para respostas ágeis via AgentRouter",
+            badge = "AgentRouter",
+            icon = Icons.Default.Bolt
+        ),
+        ModelOption(
+            id = "gpt-6-astra",
+            name = "GPT-6 Astra",
+            subtitle = "Multimodal e raciocínio profundo OpenAI via AgentRouter",
+            badge = "AgentRouter",
+            icon = Icons.Default.AutoAwesome
+        ),
+        ModelOption(
+            id = "deepseek/deepseek-r1:free",
+            name = "DeepSeek R1",
+            subtitle = "Raciocínio lógico e matemático via OpenRouter",
+            badge = "Open Source",
+            icon = Icons.Default.Tune
+        ),
+        ModelOption(
             id = "gemini-2.5-pro",
             name = "Gemini Pro",
             subtitle = "Raciocínio avançado, código e exames",
@@ -134,13 +170,6 @@ fun SettingsScreen(
             subtitle = "Ultra-rápido, respostas concisas e diretas",
             badge = "Velocidade Máxima",
             icon = Icons.Default.Bolt
-        ),
-        ModelOption(
-            id = "deepseek/deepseek-r1:free",
-            name = "DeepSeek R1",
-            subtitle = "Raciocínio lógico e matemático via OpenRouter",
-            badge = "Open Source",
-            icon = Icons.Default.Tune
         )
     )
 
@@ -211,7 +240,8 @@ fun SettingsScreen(
                     val isSelected = settings.model.equals(modelOpt.id, ignoreCase = true) ||
                             (modelOpt.name == "Gemini Flash" && (settings.model == "Gemini Flash" || settings.model.isBlank())) ||
                             (modelOpt.name == "Gemini Pro" && settings.model == "Gemini Pro") ||
-                            (modelOpt.name == "TypeSafe JEV" && settings.model == "TypeSafe JEV")
+                            (modelOpt.name == "TypeSafe JEV" && settings.model == "TypeSafe JEV") ||
+                            (modelOpt.id == "claude-opus-4-8" && settings.model.equals("laude-opus-4-8", ignoreCase = true))
 
                     Card(
                         modifier = Modifier
@@ -359,6 +389,31 @@ fun SettingsScreen(
                             IconButton(onClick = { showGeminiKey = !showGeminiKey }) {
                                 Icon(
                                     imageVector = if (showGeminiKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = null,
+                                    tint = Color.Gray
+                                )
+                            }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFF38BDF8),
+                            unfocusedBorderColor = Color(0xFF2E3344)
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = settings.directAgentRouterKey,
+                        onValueChange = { settings = settings.copy(directAgentRouterKey = it) },
+                        label = { Text("Chave Direta AgentRouter (agentrouter.org)", color = Color(0xFF94A3B8)) },
+                        placeholder = { Text("Cole sua chave da API AgentRouter...", color = Color.DarkGray) },
+                        modifier = Modifier.fillMaxWidth(),
+                        visualTransformation = if (showAgentRouterKey) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showAgentRouterKey = !showAgentRouterKey }) {
+                                Icon(
+                                    imageVector = if (showAgentRouterKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                     contentDescription = null,
                                     tint = Color.Gray
                                 )
