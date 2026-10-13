@@ -223,28 +223,9 @@ fun MainScreen(
     var isLoading by remember { mutableStateOf(false) }
     var currentResult by remember { mutableStateOf<AssistantResult?>(null) }
 
-    // Mensagens da conversa (inicialmente idênticas à imagem de referência)
+    // Mensagens da conversa (inicia vazia para novas conversas)
     var chatMessages by remember {
-        mutableStateOf(
-            listOf(
-                ChatMessage(
-                    isUser = true,
-                    text = "Oi"
-                ),
-                ChatMessage(
-                    isUser = false,
-                    text = "Oiii! \uD83D\uDE04\uD83D\uDC4B Tudo bem contigo?\n\nComo está a correr o teu dia? Diz-me, em que posso ajudar hoje? \uD83D\uDE80"
-                ),
-                ChatMessage(
-                    isUser = true,
-                    text = "Em que ano foi fundada angola?"
-                ),
-                ChatMessage(
-                    isUser = false,
-                    text = "Angola tornou-se independente em **1975**, no dia **11 de novembro**. \uD83C\uDDE6\uD83C\uDDF4\n\nNo entanto, é importante distinguir duas datas:\n\n• **1575**: Fundação de Luanda, por Paulo Dias de Novais, durante a presença colonial portuguesa.\n• **11 de novembro de 1975**: Proclamação da Independência de Angola, sob a liderança de Agostinho Neto, o primeiro Presidente da República."
-                )
-            )
-        )
+        mutableStateOf<List<ChatMessage>>(emptyList())
     }
 
     // TTS
